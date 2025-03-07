@@ -22,3 +22,7 @@ bool DHCPv6_isCSMessage(uint16_t msg_type) {
             return false; // 未知类型，默认认为不是
     }
 }
+
+int DHCPv6_ReadHeader() {
+
+}

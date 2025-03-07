@@ -56,6 +56,10 @@ void print_memory_hex(const void *mem, size_t size) {
 }
 
 int main() {
+    void *p = malloc(sizeof(void *));
+    srandom((unsigned int) p);
+    free(p);
+
     int pktLen = 4   // hdr
                  + (4 + 2 + 4 + 4)     // CLIENT ID
                  + (4 + sizeof(DHCPv6_opt_ElapsedTime))  // E TIME
@@ -63,9 +67,9 @@ int main() {
                  + (4 + sizeof(DHCPv6_opt_IA_PD));  // IA PD
     DHCPv6_pkt *pkt = (DHCPv6_pkt *) malloc(pktLen);
     pkt->MsgType = SOLICIT;
-    pkt->TransactionId[0] = 0x77;
-    pkt->TransactionId[1] = 0x66;
-    pkt->TransactionId[2] = 0x55;
+    pkt->TransactionId[0] = random() % 256;
+    pkt->TransactionId[1] = random() % 256;
+    pkt->TransactionId[2] = random() % 256;
     void *option = pkt->Options;
 
     // CLIENT ID
@@ -137,6 +141,7 @@ int main() {
         exit(EXIT_FAILURE);
     }
 
+    // ioctl req
     struct ifreq *request = (struct ifreq *) malloc(sizeof(struct ifreq));
     strcpy(request->ifr_name, "ppp0");
     setsockopt(handler, SOL_SOCKET, SO_BINDTODEVICE, (char *) request, sizeof(struct ifreq));
@@ -170,6 +175,37 @@ int main() {
 
     printf("Send success.");
     printf(strerror(errno));
+
+//    while (true) {
+    int mtu = 1500;
+
+    if (ioctl(handler, SIOCGIFMTU, request) < 0) {
+        perror("ioctl");
+    }
+
+    mtu = request->ifr_ifru.ifru_mtu;
+    DHCPv6_pkt *recBuf = (DHCPv6_pkt *) malloc(mtu);
+
+    socklen_t addrLen = sizeof(client_addr);
+    ssize_t recLen = recvfrom(handler, recBuf, mtu, 0,
+                              (struct sockaddr *) &client_addr, &addrLen);
+
+    if (recLen < 0) {
+        perror("recvfrom 失败");
+//            continue;
+    }
+
+    printf("rec %ld bytes\n", recLen);
+    print_memory_hex(recBuf, recLen);
+
+    printf("msg-type: %d, trans-id: %d,%d,%d\n", pkt->MsgType, pkt->TransactionId[0], pkt->TransactionId[1],
+           pkt->TransactionId[1]);
+
+//        int hasRead = 4;
+//        while (hasRead < recLen) {
+//            int ret = readOptionFromCSMessage(buffer, pkt, recLen, 0, 0);
+//        }
+//}
 
     close(handler);
     return 0;
