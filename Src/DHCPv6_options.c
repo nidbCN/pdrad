@@ -6,6 +6,8 @@
 #include <errno.h>
 #include <stdio.h>
 
+#define new(T) ((T*)malloc(sizeof(T)))
+
 bool
 createCustomOptionPayload(DHCPv6_optPayload *payload, uint16_t optionCode, void *optionData, size_t optionDataLength) {
     payload->OptionCode = htobe16(optionCode);
@@ -66,47 +68,81 @@ bool createOption_ElapsedTime(DHCPv6_optPayload *payload, uint16_t time) {
     if (payload == NULL)
         return false;
 
-    DHCPv6_opt_ElapsedTime *option = (DHCPv6_opt_ElapsedTime *) malloc(sizeof(DHCPv6_opt_ElapsedTime));
+    DHCPv6_opt_ElapsedTime *option = new(DHCPv6_opt_ElapsedTime);
     option->ElapsedTime = htobe16(time);
     bool result = createOptionPayload(payload, DHCPv6_OPTION_ELAPSED_TIME, option, sizeof(DHCPv6_opt_ElapsedTime));
     free(option);
     return result;
 }
 
-// offset in byte
-int readOptionFromCSMessage(DHCPv6_optPayload *buffer, DHCPv6_pkt *pkt, size_t length, int index, int offset) {
-    if (pkt == NULL) return EFAULT;
-    if (!DHCPv6_isCSMessage(pkt->MsgType)) return EINVAL;
+DHCPv6_optPayload *readerPtr = NULL;
+size_t readerLength = 0;
 
-    int i = 0;
+bool DHCPv6_Reader_startRead(const DHCPv6_pkt *pkt, size_t size) {
+    if (pkt->MsgType != ADVERTISE)
+        return false;
 
-    DHCPv6_optPayload *payload = NULL;
+    readerPtr = (void *) (pkt + 4);
+    readerLength = size - 4;
 
-    // skip
-    while (i != index) {
-        payload = (DHCPv6_optPayload *) &pkt->Options[offset];
-        offset += (payload->OptionLength + (16 + 16));
+    return true;
+}
 
-        if (offset >= length)
-            return ENOENT;
+typedef struct _DHCPv6_Reader_result {
+    bool readResult;
+    DHCPv6_opt_IA_PD *IA_PD;
+    DHCPv6_opt_ElapsedTime *ElapsedTIme;
+    DHCPv6_opt_ClientIdentifier *ClientIdentifier;
+    DHCPv6_optCollection_IA_Prefix_option *IA_PrefixList;
+    DHCPv6_opt_StatusCode *StatusCode;
+} DHCPv6_Reader_result;
 
-        printf("skip option index %d, with option-code %d, len %d, now offset %d.\n",
-               i,
-               payload->OptionCode,
-               payload->OptionLength,
-               offset);
+DHCPv6_Reader_result DHCPv6_Reader_readOptions() {
+    DHCPv6_Reader_result result = {
+            .readResult = false
+    };
 
-        i++;
+    // invalid status
+    if (readerLength <= 0 || readerPtr == NULL)
+        return result;
+
+    while (readerLength > 0) {
+        int optionLength = be16toh(readerPtr->OptionLength);
+        void *option = malloc(optionLength);
+        memcpy(option, readerPtr->OptionData, optionLength);
+
+        switch (be16toh(readerPtr->OptionCode)) {
+            case DHCPv6_OPTION_CLIENTID:
+                result.ClientIdentifier = option;
+                break;
+            case DHCPv6_OPTION_IA_PD:
+                result.IA_PD = option;
+                break;
+            case DHCPv6_OPTION_IAPREFIX:
+                result.readResult = false;
+                DHCPv6_optCollection_IA_Prefix_option *node = new(DHCPv6_optCollection_IA_Prefix_option);
+                node->value = option;
+
+                if (result.IA_PrefixList != NULL) {
+                    result.IA_PrefixList = node;
+                } else {
+                    DHCPv6_optCollection_IA_Prefix_option *pNode = result.IA_PrefixList;
+                    while (pNode->next != NULL)
+                        pNode = pNode->next;
+                    pNode->next = node;
+                }
+
+                break;
+            case DHCPv6_OPTION_STATUS_CODE:
+                result.StatusCode = option;
+                break;
+        }
     }
 
-    payload = (DHCPv6_optPayload *) &pkt->Options[offset];
-    int resultLength = payload->OptionLength + (16 + 16);
+    // clean
+    readerLength = 0;
+    readerPtr = NULL;
 
-    printf("success read option index %d, with option-code %d, len %d.",
-           i,
-           payload->OptionCode,
-           payload->OptionLength);
-
-    memcpy(buffer, payload, resultLength);
-    return resultLength;
+    result.readResult = true;
+    return result;
 }

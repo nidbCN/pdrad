@@ -161,6 +161,11 @@ typedef struct _DHCPv6_opt_IA_Prefix_option {
     uint8_t IPv6_Prefix[16];
 } __attribute__((packed)) DHCPv6_opt_IA_Prefix;
 
+typedef struct _DHCPv6_optCollection_IA_Prefix_option {
+    DHCPv6_opt_IA_Prefix *value;
+    struct _DHCPv6_optCollection_IA_Prefix_option *next;
+} DHCPv6_optCollection_IA_Prefix_option;
+
 typedef struct _DHCPv6_opt_RapidCommit {
 } DHCPv6_opt_RapidCommit;
 
