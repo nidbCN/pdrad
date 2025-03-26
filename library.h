@@ -1,6 +1,0 @@
-#ifndef KEADYNPERFIX_LIBRARY_H
-#define KEADYNPERFIX_LIBRARY_H
-
-void hello(void);
-
-#endif //KEADYNPERFIX_LIBRARY_H

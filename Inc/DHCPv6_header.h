@@ -2,8 +2,8 @@
 // Created by nidb on 3/3/25.
 //
 
-#ifndef KEADYNPREFIX_DHCPV6_HEADER_H
-#define KEADYNPREFIX_DHCPV6_HEADER_H
+#ifndef PDRAD_DHCPV6_HEADER_H
+#define PDRAD_DHCPV6_HEADER_H
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -32,4 +32,4 @@ enum DHCPv6_msgType {
 
 bool DHCPv6_isCSMessage(uint16_t msg_type);
 
-#endif //KEADYNPREFIX_DHCPV6_HEADER_H
+#endif //PDRAD_DHCPV6_HEADER_H

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.26)
-project(KeaDynPrefix C)
+project(pdrad C)
 
 set(CMAKE_C_STANDARD 11)
 
@@ -11,8 +11,13 @@ set(CMAKE_C_COMPILER ${tools}/bin/aarch64-linux-gnu-gcc)
 
 include_directories(Inc/)
 
-add_executable(KeaDynPrefix_DHCPv6Test Src/test.c Src/DHCPv6_headers.c Src/DHCPv6_options.c)
-
-add_library(KeaDynPrefix library.c
+add_executable(pdrad
+        Src/test.c
         Src/DHCPv6_headers.c
-        Src/DHCPv6_options.c)
+        Src/DHCPv6_options.c
+        Src/DHCPv6_reader.c)
+
+add_library(libpdrad
+        Src/DHCPv6_headers.c
+        Src/DHCPv6_options.c
+        Src/DHCPv6_reader.c)

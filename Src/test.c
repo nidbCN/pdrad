@@ -2,29 +2,17 @@
 #include <stdlib.h>
 #include <string.h>
 #include <arpa/inet.h>
-#include <netinet/ip6.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
-#include <sys/types.h>
 #include <unistd.h>
-#include <time.h>
 #include <errno.h>
 #include <sys/ioctl.h>
-#include <sys/socket.h>
-#include <errno.h>
-#include <netinet/in.h>
 #include <net/if.h>
-#include <stdio.h>
-#include <string.h>
-#include <sys/ioctl.h>
-#include <sys/socket.h>
-#include <net/if_arp.h>
 #include "DHCPv6_header.h"
 #include "DHCPv6_options.h"
 
 #define SERVER_ADDR "ff02::1:2"
 
-//#define SERVER_ADDR "fe80::9e52:f8ff:fe61:b4a2"
 #define SERVER_PORT 547
 #define CLIENT_PORT 546
 

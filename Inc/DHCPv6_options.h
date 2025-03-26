@@ -1,5 +1,5 @@
-#ifndef KEADYNPREFIX_DHCPv6_OPTIONS_H
-#define KEADYNPREFIX_DHCPv6_OPTIONS_H
+#ifndef PDRAD_DHCPv6_OPTIONS_H
+#define PDRAD_DHCPv6_OPTIONS_H
 
 #include <stdint.h>
 #include <stddef.h>
@@ -225,4 +225,4 @@ createOption_ClientIdentifier_En(DHCPv6_optPayload *payload, uint32_t enterprise
 
 int readOptionFromCSMessage(DHCPv6_optPayload *buffer, DHCPv6_pkt *pkt, size_t length, int index, int offset);
 
-#endif //KEADYNPREFIX_DHCPv6_OPTIONS_H
+#endif //PDRAD_DHCPv6_OPTIONS_H
