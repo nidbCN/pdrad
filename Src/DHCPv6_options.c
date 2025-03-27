@@ -50,26 +50,29 @@ dh_optPayload *dh_createOption_ClientIdentifier_En(uint32_t enterpriseNumber, ui
     if (idLength <= 0)
         return NULL;
 
-    dh_opt_ClientIdentifier *option = (dh_opt_ClientIdentifier *) malloc(idLength + 6);
+    dh_optPayload *payload = (dh_optPayload *) alloca(idLength + sizeof(uint16_t) + dh_optPayload_offset);
+    payload->OptionCode = DHCPv6_OPTION_CLIENTID;
+    payload->OptionLength = idLength + sizeof(uint16_t);
+
+    dh_opt_ClientIdentifier *option = (dh_opt_ClientIdentifier *) (payload + dh_optPayload_offset);
 
     option->DUIdType = htobe16(DUId_En);
     option->Data.DUId_En.EnterpriseNumber = htobe32(enterpriseNumber);
     memcpy(option->Data.DUId_En.Identifier, id, idLength);
 
-    bool result = dh_createOptPayload(payload, DHCPv6_OPTION_CLIENTID, option, idLength + 6);
-    free(option);
-    return result;
+    return payload;
 }
 
-bool dh_createOption_ElapsedTime(dh_optPayload *payload, uint16_t time) {
-    if (payload == NULL)
-        return false;
+// unit: 1/100 sec
+dh_optPayload *dh_createOption_ElapsedTime(uint16_t time) {
+    dh_optPayload *payload = alloca(dh_optPayload_offset + sizeof(dh_opt_ElapsedTime));
+    payload->OptionCode = DHCPv6_OPTION_ELAPSED_TIME;
+    payload->OptionLength = sizeof(dh_opt_ElapsedTime);
 
-    dh_opt_ElapsedTime *option = new(dh_opt_ElapsedTime);
+    dh_opt_ElapsedTime *option = (dh_opt_ElapsedTime *) (payload + dh_optPayload_offset);
     option->ElapsedTime = htobe16(time);
-    bool result = dh_createOptPayload(payload, DHCPv6_OPTION_ELAPSED_TIME, option, sizeof(dh_opt_ElapsedTime));
-    free(option);
-    return result;
+
+    return payload;
 }
 
 // do not free *pkt, it's used in dh_parsedOptions

@@ -225,9 +225,10 @@ dh_optPayload *dh_createOption_IA_PD(uint32_t id, uint32_t preferredRenewalTimeS
 
 dh_optPayload *dh_createOption_RapidCommit();
 
-bool dh_createOption_ElapsedTime(dh_optPayload *payload, uint16_t time);
+dh_optPayload *dh_createOption_ClientIdentifier_En(uint32_t enterpriseNumber, uint8_t id[], size_t idLength);
 
-bool
-dh_createOption_ClientIdentifier_En(dh_optPayload *payload, uint32_t enterpriseNumber, uint8_t id[], size_t idLength);
+dh_optPayload *dh_createOption_ElapsedTime(uint16_t time);
+
+dh_parsedOptions dh_parseOptions(const DHCPv6_pkt *pkt, size_t size);
 
 #endif //PDRAD_DHCPv6_OPTIONS_H
