@@ -50,9 +50,9 @@ int main() {
 
     int pktLen = 4   // hdr
                  + (4 + 2 + 4 + 4)     // CLIENT ID
-                 + (4 + sizeof(DHCPv6_opt_ElapsedTime))  // E TIME
+                 + (4 + sizeof(dh_opt_ElapsedTime))  // E TIME
                  + (4)   // RAPID COMMIT
-                 + (4 + sizeof(DHCPv6_opt_IA_PD));  // IA PD
+                 + (4 + sizeof(dh_opt_IA_PD));  // IA PD
     DHCPv6_pkt *pkt = (DHCPv6_pkt *) malloc(pktLen);
     pkt->MsgType = SOLICIT;
     pkt->TransactionId[0] = random() % 256;
@@ -63,11 +63,11 @@ int main() {
     // CLIENT ID
     //      opt type enid id
     int len = 4 + 2 + 4 + 4;
-    DHCPv6_optPayload *buffer;
+    dh_optPayload *buffer;
 
     uint8_t id[] = {0x0d, 0x00, 0x07, 0x21};
-    buffer = (DHCPv6_optPayload *) malloc(len);
-    if (!createOption_ClientIdentifier_En(buffer, 4107, id, 4)) {
+    buffer = (dh_optPayload *) malloc(len);
+    if (!dh_createOption_ClientIdentifier_En(buffer, 4107, id, 4)) {
         perror("DHCPv6 CLIENT ID payload init failed.");
         exit(EXIT_FAILURE);
     }
@@ -79,9 +79,9 @@ int main() {
 
     // ES TIME
     //    opt time
-    len = 4 + sizeof(DHCPv6_opt_ElapsedTime);
-    buffer = (DHCPv6_optPayload *) malloc(len);
-    if (!createOption_ElapsedTime(buffer, 0)) {
+    len = 4 + sizeof(dh_opt_ElapsedTime);
+    buffer = (dh_optPayload *) malloc(len);
+    if (!dh_createOption_ElapsedTime(buffer, 0)) {
         perror("DHCPv6 ELAPSED TIME payload init failed.");
         exit(EXIT_FAILURE);
     }
@@ -94,8 +94,8 @@ int main() {
     // RAPID COMMIT
     //   opt rapid
     len = 4 + 0;
-    buffer = (DHCPv6_optPayload *) malloc(len);
-    if (!createOption_RapidCommit(buffer)) {
+    buffer = (dh_optPayload *) malloc(len);
+    if (!dh_createOption_RapidCommit(buffer)) {
         perror("DHCPv6 RAPID COMMIT payload init failed.");
         exit(EXIT_FAILURE);
     }
@@ -106,9 +106,9 @@ int main() {
     free(buffer);
 
     // IA PD
-    len = 4 + sizeof(DHCPv6_opt_IA_PD);
-    buffer = (DHCPv6_optPayload *) malloc(len);
-    if (!createOption_IA_PD(buffer, 0x0d000721, 8192, 8192)) {
+    len = 4 + sizeof(dh_opt_IA_PD);
+    buffer = (dh_optPayload *) malloc(len);
+    if (!dh_createOption_IA_PD(buffer, 0x0d000721, 8192, 8192)) {
         perror("DHCPv6 PD payload init failed.");
         exit(EXIT_FAILURE);
     }
@@ -191,7 +191,7 @@ int main() {
 
 //        int hasRead = 4;
 //        while (hasRead < recLen) {
-//            int ret = readOptionFromCSMessage(buffer, pkt, recLen, 0, 0);
+//            int ret = dh_readOptionFromCSMessage(buffer, pkt, recLen, 0, 0);
 //        }
 //}
 

@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <sys/types.h>
 #include <stdlib.h>
+#include "log.h"
 
 #define PDRAD_GLOBAL_H
 
