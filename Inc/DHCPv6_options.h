@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include <netinet/in.h>
 #include "DHCPv6_header.h"
 
 enum dh_options {
@@ -143,23 +144,33 @@ enum dh_options {
     DHCPv6_OPTION_IPV6_Address_ANDSF = 136
 };
 
-typedef struct _dh_opt_status_code {
-    uint16_t StatusCode;
-    char StatusMessage[];
-} __attribute__((packed)) dh_opt_StatusCode;
+typedef struct _dh_optPayload {
+    uint16_t OptionCode;
+    uint16_t OptionLength;
+    uint8_t OptionData[];
+} __attribute__((packed)) dh_optPayload;
 
+// multiple, may contains `IA Prefix Option`
 typedef struct _dh_opt_IA_PD {
     uint32_t IA_id;
     uint32_t Time1;
     uint32_t Time2;
+    dh_optPayload[] Options;
 } __attribute__((packed)) dh_opt_IA_PD;
 
+// multiple, may contains `Status Code Option`
 typedef struct _dh_opt_IA_Prefix_option {
     uint32_t PreferredLifetime;
     uint32_t ValidLifetime;
     uint8_t PrefixLength;
-    uint8_t IPv6_Prefix[16];
+    struct in6_addr Prefix;
+    dh_optPayload[] Options;
 } __attribute__((packed)) dh_opt_IA_Prefix;
+
+typedef struct _dh_opt_status_code {
+    uint16_t StatusCode;
+    char StatusMessage[];
+} __attribute__((packed)) dh_opt_StatusCode;
 
 typedef struct _dh_opt_RapidCommit {
 } dh_opt_RapidCommit;
@@ -195,12 +206,6 @@ typedef struct _dh_opt_ClientIdentifier {
     } __attribute__((packed)) Data;
 } __attribute__((packed)) dh_opt_ClientIdentifier;
 
-typedef struct _dh_optPayload {
-    uint16_t OptionCode;
-    uint16_t OptionLength;
-    uint8_t OptionData[];
-} __attribute__((packed)) dh_optPayload;
-
 typedef struct _dh_optMultiPayload {
     dh_optPayload *value;
     struct _dh_optMultiPayload *next;
@@ -208,11 +213,10 @@ typedef struct _dh_optMultiPayload {
 
 typedef struct _DHCPv6_Reader_result {
     bool success;
-    dh_optPayload *IA_PD;
-    dh_optPayload *ElapsedTIme;
     dh_optPayload *ClientIdentifier;
-    dh_optMultiPayload *IA_PrefixList;
-    dh_optPayload *StatusCode;
+    dh_optPayload *ServerIdentifier;
+    dh_optMultiPayload *IA_PDList;
+    dh_optPayload *ElapsedTIme;
 } dh_parsedOptions;
 
 #define dh_optPayload_offset (sizeof(uint16_t) + sizeof(uint16_t))
@@ -221,7 +225,8 @@ dh_optPayload *dh_createCustomOptPayload(uint16_t optionCode, void *optionData, 
 
 dh_optPayload *dh_createOptPayload(enum dh_options optionCode, void *optionData, size_t optionDataLength);
 
-dh_optPayload *dh_createOption_IA_PD(uint32_t id, uint32_t preferredRenewalTimeSec, uint32_t preferredRebindTime);
+// NOTE: preferredRenewalTimeSec and preferredRebindTime should be 0x00 in client message
+dh_optPayload *dh_createOption_IA_PD(uint32_t id, const dh_optPayload prefixOptions[], size_t prefixOptionsLength);
 
 dh_optPayload *dh_createOption_RapidCommit();
 
@@ -229,6 +234,10 @@ dh_optPayload *dh_createOption_ClientIdentifier_En(uint32_t enterpriseNumber, ui
 
 dh_optPayload *dh_createOption_ElapsedTime(uint16_t time);
 
-dh_parsedOptions dh_parseOptions(const DHCPv6_pkt *pkt, size_t size);
+// Read options from DHCPv6 packet
+// pkt: a pure DHCPv6 packet, do not contains UDP protocol
+// size: DHCPv6 packet length
+// NOTE: do not free *pkt, it's used in dh_parsedOptions
+dh_parsedOptions dh_parseOptions(const dh_pkt *pkt, size_t size);
 
 #endif //PDRAD_DHCPv6_OPTIONS_H

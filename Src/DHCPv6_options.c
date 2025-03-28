@@ -5,6 +5,7 @@
 #include <sys/types.h>
 #include "DHCPv6_options.h"
 #include "global.h"
+#include <netinet/in.h>
 
 // optionDataLength without metadata
 dh_optPayload *dh_createCustomOptPayload(uint16_t optionCode, void *optionData, size_t optionDataLength) {
@@ -25,19 +26,35 @@ dh_optPayload *dh_createOptPayload(enum dh_options optionCode, void *optionData,
     return dh_createCustomOptPayload(optionCode, optionData, optionDataLength);
 }
 
-// NOTE: preferredRenewalTimeSec and preferredRebindTime should be 0x00 in client message
-dh_optPayload *dh_createOption_IA_PD(uint32_t id, uint32_t preferredRenewalTimeSec, uint32_t preferredRebindTime) {
-    // TODO: option-len is 12 + length of IA_PD-options field.
-
+dh_optPayload *dh_createOption_IA_PD(uint32_t id, const dh_optPayload prefixOptions[], size_t prefixOptionsLength) {
     dh_optPayload *payload = alloca(sizeof(dh_opt_IA_PD) + dh_optPayload_offset);
-    dh_opt_IA_PD *option = (dh_opt_IA_PD *) (payload + dh_optPayload_offset);
+    dh_opt_IA_PD *thisOption = (dh_opt_IA_PD *) (payload + dh_optPayload_offset);
 
-    option->IA_id = htobe32(id);
-    option->Time1 = htobe32(preferredRenewalTimeSec);
-    option->Time2 = htobe32(preferredRebindTime);
+    thisOption->IA_id = htobe32(id);
+    thisOption->Time1 = 0x00;
+    thisOption->Time2 = 0x00;
+    memcpy(thisOption->Options, prefixOptions, prefixOptionsLength);
 
     payload->OptionCode = DHCPv6_OPTION_IA_PD;
-    payload->OptionLength = sizeof(dh_opt_IA_PD);
+    payload->OptionLength = sizeof(dh_opt_IA_PD) + prefixOptionsLength;
+
+    return payload;
+}
+
+dh_optPayload *
+dh_createOption_IAPrefix(uint32_t preferredTime, uint32_t validTime, uint8_t prefixLength, struct in6_addr prefix) {
+    uint optionLength = sizeof(dh_opt_IA_Prefix) - sizeof(uint8_t);
+
+    dh_optPayload *payload = (dh_optPayload *) alloca(optionLength + dh_optPayload_offset);
+    payload->OptionCode = DHCPv6_OPTION_IAPREFIX;
+    payload->OptionLength = optionLength;
+
+    dh_opt_IA_Prefix *option = (dh_opt_IA_Prefix *) (payload + dh_optPayload_offset);
+
+    option->PreferredLifetime = htobe16(preferredTime);
+    option->ValidLifetime = htobe16(validTime);
+    option->PrefixLength = prefixLength;
+    memcpy(&(option->Prefix), &prefix, sizeof(struct in6_addr));
 
     return payload;
 }
@@ -75,8 +92,7 @@ dh_optPayload *dh_createOption_ElapsedTime(uint16_t time) {
     return payload;
 }
 
-// do not free *pkt, it's used in dh_parsedOptions
-dh_parsedOptions dh_parseOptions(const DHCPv6_pkt *pkt, size_t size) {
+dh_parsedOptions dh_parseOptions(const dh_pkt *pkt, size_t size) {
     log_debug("Start parse option, address: %p, length: %d.", pkt, size);
 
     dh_optPayload *readerPtr = (dh_optPayload *) (pkt + sizeof(uint16_t) + sizeof(uint16_t));
@@ -93,8 +109,8 @@ dh_parsedOptions dh_parseOptions(const DHCPv6_pkt *pkt, size_t size) {
     }
 
     // invalid type
-    if (pkt->MsgType != ADVERTISE) {
-        log_error("Wrong message type %d, expect ADVERTISE.", pkt->MsgType);
+    if (pkt->MsgType != dh_ADVERTISE) {
+        log_error("Wrong message type %d, expect dh_ADVERTISE.", pkt->MsgType);
         return result;
     }
 
@@ -106,26 +122,22 @@ dh_parsedOptions dh_parseOptions(const DHCPv6_pkt *pkt, size_t size) {
             case DHCPv6_OPTION_CLIENTID:
                 result.ClientIdentifier = option;
                 break;
-            case DHCPv6_OPTION_IA_PD:
-                result.IA_PD = option;
+            case DHCPv6_OPTION_SERVERID:
+                result.ServerIdentifier = option;
                 break;
-            case DHCPv6_OPTION_IAPREFIX:
+            case DHCPv6_OPTION_IA_PD:
                 result.success = false;
                 dh_optMultiPayload *newNode = new(dh_optMultiPayload);
                 newNode->value = option;
 
-                if (result.IA_PrefixList != NULL) {
-                    result.IA_PrefixList = newNode;
+                if (result.IA_PDList != NULL) {
+                    result.IA_PDList = newNode;
                 } else {
-                    dh_optMultiPayload *currentNode = result.IA_PrefixList;
+                    dh_optMultiPayload *currentNode = result.IA_PDList;
                     while (currentNode->next != NULL)
                         currentNode = currentNode->next;
                     currentNode->next = newNode;
                 }
-
-                break;
-            case DHCPv6_OPTION_STATUS_CODE:
-                result.StatusCode = option;
                 break;
         }
 

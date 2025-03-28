@@ -53,8 +53,8 @@ int main() {
                  + (4 + sizeof(dh_opt_ElapsedTime))  // E TIME
                  + (4)   // RAPID COMMIT
                  + (4 + sizeof(dh_opt_IA_PD));  // IA PD
-    DHCPv6_pkt *pkt = (DHCPv6_pkt *) malloc(pktLen);
-    pkt->MsgType = SOLICIT;
+    dh_pkt *pkt = (dh_pkt *) malloc(pktLen);
+    pkt->MsgType = dh_SOLICIT;
     pkt->TransactionId[0] = random() % 256;
     pkt->TransactionId[1] = random() % 256;
     pkt->TransactionId[2] = random() % 256;
@@ -172,7 +172,7 @@ int main() {
     }
 
     mtu = request->ifr_ifru.ifru_mtu;
-    DHCPv6_pkt *recBuf = (DHCPv6_pkt *) malloc(mtu);
+    dh_pkt *recBuf = (dh_pkt *) malloc(mtu);
 
     socklen_t addrLen = sizeof(client_addr);
     ssize_t recLen = recvfrom(handler, recBuf, mtu, 0,
