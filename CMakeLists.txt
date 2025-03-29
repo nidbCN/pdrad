@@ -15,12 +15,14 @@ include_directories(Lib/Inc)
 add_executable(pdrad
         Lib/log.c
         Src/test.c
-        Src/DHCPv6_headers.c
-        Src/DHCPv6_options.c
+        Src/dh_headers.c
+        Src/dh_options.c
+        Src/collection.c
 )
 
 add_library(libpdrad
         Lib/log.c
-        Src/DHCPv6_headers.c
-        Src/DHCPv6_options.c
+        Src/dh_headers.c
+        Src/dh_options.c
+        Src/collection.c
 )

@@ -5,7 +5,7 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <netinet/in.h>
-#include "DHCPv6_header.h"
+#include "dh_header.h"
 
 enum dh_options {
     DHCPv6_OPTION_CLIENTID = 1,

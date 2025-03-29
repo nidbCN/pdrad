@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
-#include "DHCPv6_options.h"
+#include "dh_options.h"
 #include "global.h"
 #include <netinet/in.h>
 

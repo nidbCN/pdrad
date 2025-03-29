@@ -1,13 +1,20 @@
-#ifndef PDRAD_DHCPV6_HEADER_H
-#define PDRAD_DHCPV6_HEADER_H
+#ifndef PDRAD_DH_HEADER_H
+#define PDRAD_DH_HEADER_H
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "dh_options.h"
+
+typedef struct _dh_pkt_TransactionId {
+    uint8_t TransactionId_0;
+    uint8_t TransactionId_1;
+    uint8_t TransactionId_2;
+}  __attribute__((packed)) dh_pkt_TransactionId;
 
 typedef struct _dh_pkt {
     uint8_t MsgType;
-    uint8_t TransactionId[3];
-    uint8_t Options[];
+    dh_pkt_TransactionId TransactionId;
+    struct dh_optPayload Options[];
 } __attribute__((packed)) dh_pkt;
 
 enum dh_msgType {
@@ -26,4 +33,4 @@ enum dh_msgType {
     dh_RELAY_REPL = 13
 };
 
-#endif //PDRAD_DHCPV6_HEADER_H
+#endif //PDRAD_DH_HEADER_H

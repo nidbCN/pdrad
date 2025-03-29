@@ -8,8 +8,8 @@
 #include <errno.h>
 #include <sys/ioctl.h>
 #include <net/if.h>
-#include "DHCPv6_header.h"
-#include "DHCPv6_options.h"
+#include "dh_header.h"
+#include "dh_options.h"
 
 #define SERVER_ADDR "ff02::1:2"
 
