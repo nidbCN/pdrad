@@ -5,7 +5,6 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <netinet/in.h>
-#include "dh_header.h"
 
 enum dh_options
 {
@@ -158,7 +157,7 @@ typedef struct _dh_opt_IA_PD
     uint32_t IA_id;
     uint32_t Time1;
     uint32_t Time2;
-    dh_optPayload[] Options;
+    dh_optPayload Options[];
 } __attribute__((packed)) dh_opt_IA_PD;
 
 // multiple, may contains `Status Code Option`
@@ -168,7 +167,7 @@ typedef struct _dh_opt_IA_Prefix_option
     uint32_t ValidLifetime;
     uint8_t PrefixLength;
     struct in6_addr Prefix;
-    dh_optPayload[] Options;
+    dh_optPayload Options[];
 } __attribute__((packed)) dh_opt_IA_Prefix;
 
 typedef struct _dh_opt_status_code
@@ -245,9 +244,9 @@ typedef struct _DHCPv6_Reader_result
 
 #define dh_optPayload_offset (sizeof(uint16_t) + sizeof(uint16_t))
 
-dh_optPayload *dh_createCustomOptPayload(uint16_t optionCode, void *optionData, size_t optionDataLength);
+dh_optPayload *dh_createCustomOptPayload(uint16_t optionCode, const void *optionData, size_t optionDataLength);
 
-dh_optPayload *dh_createOptPayload(enum dh_options optionCode, void *optionData, size_t optionDataLength);
+dh_optPayload *dh_createOptPayload(enum dh_options optionCode, const void *optionData, size_t optionDataLength);
 
 // NOTE: preferredRenewalTimeSec and preferredRebindTime should be 0x00 in client message
 dh_optPayload *dh_createOption_IA_PD(uint32_t id, const dh_optPayload prefixOptions[], size_t prefixOptionsLength);
@@ -257,11 +256,5 @@ dh_optPayload *dh_createOption_RapidCommit();
 dh_optPayload *dh_createOption_ClientIdentifier_En(uint32_t enterpriseNumber, uint8_t id[], size_t idLength);
 
 dh_optPayload *dh_createOption_ElapsedTime(uint16_t time);
-
-// Read options from DHCPv6 packet
-// pkt: a pure DHCPv6 packet, do not contains UDP protocol
-// size: DHCPv6 packet length
-// NOTE: do not free *pkt, it's used in dh_parsedOptions
-dh_parsedOptions dh_parseOptions(const dh_pkt *pkt, size_t size);
 
 #endif // PDRAD_DHCPv6_OPTIONS_H

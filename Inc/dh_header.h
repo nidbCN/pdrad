@@ -16,7 +16,7 @@ typedef struct _dh_pkt_TransactionId {
 typedef struct _dh_pkt {
     uint8_t MsgType;
     dh_pkt_TransactionId TransactionId;
-    struct dh_optPayload Options[];
+    dh_optPayload Options[];
 } __attribute__((packed)) dh_pkt;
 
 enum dh_msgType {
@@ -34,5 +34,32 @@ enum dh_msgType {
     dh_RELAY_FORW = 12,
     dh_RELAY_REPL = 13
 };
+
+size_t dh_createPacket(const dh_pkt **pktPtr, enum dh_msgType msgType, dh_pkt_TransactionId transId,
+                        const dh_optPayload *optPtrList[], uint optPtrListLength);
+
+size_t dh_createSolicitPacket(const dh_pkt **pktPtr, const dh_opt_ClientIdentifier *clientId, size_t clientSize,
+                               uint16_t elapsedTime,
+                               uint32_t IA_Id);
+
+size_t dh_createRapidSolicitPacket(const dh_pkt **pktPtr, const dh_opt_ClientIdentifier *clientId, size_t clientSize,
+                                    uint16_t elapsedTime,
+                                    uint32_t IA_Id);
+
+size_t dh_CreateCustomizedSolicitPacket(
+        const dh_pkt **pktPtr,
+        const dh_optPayload *clientId,
+        const dh_optPayload *elapsedTime,
+        const dh_optPayload *IA_PD,
+        uint optionsNum, ...);
+
+size_t dh_createCustomizedRequestPacket(const dh_pkt **pktPtr, const dh_optPayload *clientId, uint16_t elapsedTime,
+                                        uint32_t IA_Id);
+
+// Read options from DHCPv6 packet
+// pkt: a pure DHCPv6 packet, do not contain UDP protocol
+// size: DHCPv6 packet length
+// NOTE: do not free *pkt, it's used in dh_parsedOptions
+dh_parsedOptions dh_parseOptions(const dh_pkt *pkt, size_t size);
 
 #endif //PDRAD_DH_HEADER_H
