@@ -10,6 +10,7 @@
 #include <net/if.h>
 #include "dh_header.h"
 #include "dh_options.h"
+#include "log.h"
 
 #define SERVER_ADDR "ff02::1:2"
 
@@ -44,88 +45,56 @@ void print_memory_hex(const void *mem, size_t size) {
 }
 
 int main() {
-    void *p = malloc(sizeof(void *));
-    srandom((unsigned int) p);
-    free(p);
-
-    int pktLen = 4   // hdr
-                 + (4 + 2 + 4 + 4)     // CLIENT ID
-                 + (4 + sizeof(dh_opt_ElapsedTime))  // E TIME
-                 + (4)   // RAPID COMMIT
-                 + (4 + sizeof(dh_opt_IA_PD));  // IA PD
-    dh_pkt *pkt = (dh_pkt *) malloc(pktLen);
-    pkt->MsgType = dh_SOLICIT;
-    pkt->TransactionId[0] = random() % 256;
-    pkt->TransactionId[1] = random() % 256;
-    pkt->TransactionId[2] = random() % 256;
-    void *option = pkt->Options;
-
     // CLIENT ID
     //      opt type enid id
-    int len = 4 + 2 + 4 + 4;
-    dh_optPayload *buffer;
-
     uint8_t id[] = {0x0d, 0x00, 0x07, 0x21};
-    buffer = (dh_optPayload *) malloc(len);
-    if (!dh_createOption_ClientIdentifier_En(buffer, 4107, id, 4)) {
-        perror("DHCPv6 CLIENT ID payload init failed.");
+    dh_optPayload *clientId = dh_createOption_ClientIdentifier_En(4107, id, 4);
+
+    if (clientId == NULL) {
+        log_error("DHCPv6 CLIENT ID payload init failed.");
         exit(EXIT_FAILURE);
     }
-    printf("DHCPv6 CLIENT ID payload create success.\n");
-    print_memory_hex(buffer, len);
-    memcpy(option, buffer, len);
-    option += len;
-    free(buffer);
+    log_info("DHCPv6 CLIENT ID payload create success.\n");
 
     // ES TIME
     //    opt time
-    len = 4 + sizeof(dh_opt_ElapsedTime);
-    buffer = (dh_optPayload *) malloc(len);
-    if (!dh_createOption_ElapsedTime(buffer, 0)) {
-        perror("DHCPv6 ELAPSED TIME payload init failed.");
+    dh_optPayload *esTime = dh_createOption_ElapsedTime(0);
+    if (esTime == NULL) {
+        log_error("DHCPv6 ELAPSED TIME payload init failed.");
         exit(EXIT_FAILURE);
     }
-    printf("DHCPv6 ELAPSED TIME payload create success.\n");
-    print_memory_hex(buffer, len);
-    memcpy(option, buffer, len);
-    option += len;
-    free(buffer);
+
+    log_info("DHCPv6 ELAPSED TIME payload create success.\n");
+
+    // IA PD
+    dh_optPayload *IA_Prefix = dh_createOption_IA_PD(0x0d0007021, NULL, 0);
+
+    if (IA_Prefix == NULL) {
+        log_error("DHCPv6 PD payload init failed.");
+        exit(EXIT_FAILURE);
+    }
+    log_info("DHCPv6 PD payload create success.\n");
 
     // RAPID COMMIT
     //   opt rapid
-    len = 4 + 0;
-    buffer = (dh_optPayload *) malloc(len);
-    if (!dh_createOption_RapidCommit(buffer)) {
-        perror("DHCPv6 RAPID COMMIT payload init failed.");
+    dh_optPayload *rapid = dh_createOption_RapidCommit();
+    if (rapid == NULL) {
+        log_error("DHCPv6 RAPID COMMIT payload init failed.");
         exit(EXIT_FAILURE);
     }
-    printf("DHCPv6 RAPID COMMIT payload create success.\n");
-    print_memory_hex(buffer, len);
-    memcpy(option, buffer, len);
-    option += len;
-    free(buffer);
+    log_info("DHCPv6 RAPID COMMIT payload create success.\n");
 
-    // IA PD
-    len = 4 + sizeof(dh_opt_IA_PD);
-    buffer = (dh_optPayload *) malloc(len);
-    if (!dh_createOption_IA_PD(buffer, 0x0d000721, 8192, 8192)) {
-        perror("DHCPv6 PD payload init failed.");
-        exit(EXIT_FAILURE);
-    }
-    printf("DHCPv6 PD payload create success.\n");
-    print_memory_hex(buffer, len);
-    memcpy(option, buffer, len);
-    option += len;
-    free(buffer);
+    const dh_pkt *pktPtr = NULL;
+    size_t pktLength = dh_CreateCustomizedSolicitPacket(&pktPtr, clientId, esTime, IA_Prefix, 1, rapid);
 
-    printf("Ready to send");
-    print_memory_hex(pkt, pktLen);
+    log_info("Ready to send");
+    print_memory_hex(pktPtr, pktLength);
 
     // init a udp socket
     int handler = socket(AF_INET6, SOCK_DGRAM, 0);
     if (handler < 0) {
-        perror("Socket creation failed.");
-        printf(strerror(errno));
+        log_error("Socket creation failed.");
+        log_error(strerror(errno));
         exit(EXIT_FAILURE);
     }
 
@@ -142,8 +111,8 @@ int main() {
     client_addr.sin6_addr = in6addr_any;
 
     if (bind(handler, (struct sockaddr *) &client_addr, sizeof(client_addr)) < 0) {
-        perror("Bind failed");
-        printf(strerror(errno));
+        log_error("Bind failed");
+        log_error(strerror(errno));
         close(handler);
         return 1;
     }
@@ -153,22 +122,20 @@ int main() {
     server_addr.sin6_port = htons(SERVER_PORT);
     inet_pton(AF_INET6, SERVER_ADDR, &server_addr.sin6_addr);
 
-    if (sendto(handler, pkt, pktLen, 0,
+    if (sendto(handler, pktPtr, pktLength, 0,
                (struct sockaddr *) &server_addr, sizeof(server_addr)) < 0) {
-        perror("Send failed.");
-        printf(strerror(errno));
+        log_error("Send failed.");
+        log_error(strerror(errno));
         close(handler);
         return 1;
     }
 
-    printf("Send success.");
-    printf(strerror(errno));
+    log_info("Send success.");
 
-//    while (true) {
     int mtu = 1500;
 
     if (ioctl(handler, SIOCGIFMTU, request) < 0) {
-        perror("ioctl");
+        log_error("ioctl error, can't get mtu: %s", strerror(errno));
     }
 
     mtu = request->ifr_ifru.ifru_mtu;
@@ -179,21 +146,33 @@ int main() {
                               (struct sockaddr *) &client_addr, &addrLen);
 
     if (recLen < 0) {
-        perror("recvfrom 失败");
-//            continue;
+        log_error("`recvfrom` call failed: %s", strerror(errno));
     }
 
-    printf("rec %ld bytes\n", recLen);
+    log_info("rec %ld bytes\n", recLen);
     print_memory_hex(recBuf, recLen);
 
-    printf("msg-type: %d, trans-id: %d,%d,%d\n", pkt->MsgType, pkt->TransactionId[0], pkt->TransactionId[1],
-           pkt->TransactionId[1]);
+    log_info("msg-type: %d, trans-id: %d,%d,%d\n", recBuf->MsgType,
+             recBuf->TransactionId.TransactionId_0,
+             recBuf->TransactionId.TransactionId_1,
+             recBuf->TransactionId.TransactionId_2);
 
-//        int hasRead = 4;
-//        while (hasRead < recLen) {
-//            int ret = dh_readOptionFromCSMessage(buffer, pkt, recLen, 0, 0);
-//        }
-//}
+    dh_parsedOptions parsed = dh_parseOptions(recBuf, recLen);
+    if (!parsed.success) {
+        log_error("parse failed.");
+    }
+
+    log_info("server id:");
+    print_memory_hex(parsed.ServerIdentifier->OptionData, parsed.ServerIdentifier->OptionLength);
+
+    dh_optPayload *pd = parsed.IA_PDList->value;
+    dh_opt_IA_PD *pdData = (dh_opt_IA_PD *) pd->OptionData;
+    dh_opt_IA_Prefix *prefix = (dh_opt_IA_Prefix *) pdData->Options;
+
+    char *prefixStr = alloca(sizeof(char) * 40);
+
+    inet_ntop(AF_INET6, &prefix->Prefix, prefixStr, INET6_ADDRSTRLEN);
+    log_info("not converted: %s", prefixStr);
 
     close(handler);
     return 0;
