@@ -117,8 +117,8 @@ size_t dh_createCustomizedRequestPacket(const dh_pkt **pktPtr, const dh_optPaylo
 dh_parsedOptions dh_parseOptions(const dh_pkt *pkt, size_t size) {
     log_debug("Start parse option, address: %p, length: %d.", pkt, size);
 
-    dh_optPayload *readerPtr = (dh_optPayload *) (pkt + sizeof(uint16_t) + sizeof(uint16_t));
-    size_t unreadDataLength = size - (sizeof(uint16_t) + sizeof(uint16_t));
+    dh_optPayload *readerPtr = (dh_optPayload *) ((size_t) pkt + dh_pkt_offset);
+    size_t unreadDataLength = size - dh_pkt_offset;
 
     log_trace("Skip header, address: %p, length: %d.", readerPtr, unreadDataLength);
 
@@ -136,36 +136,68 @@ dh_parsedOptions dh_parseOptions(const dh_pkt *pkt, size_t size) {
         return result;
     }
 
-    while (unreadDataLength > 0) {
+    while (true) {
         dh_optPayload *option = readerPtr;
-        log_debug("Start read option at %p(offset %d bytes).", option, (void *) option - (void *) pkt);
+        log_debug("Option parsing: ptr=%p,offset=%td bytes,remain=%td bytes.",
+                  option, (uintptr_t) option - (uintptr_t) pkt, unreadDataLength);
 
-        switch (be16toh(option->OptionCode)) {
+        option->OptionCode = be16toh(option->OptionCode);
+        option->OptionLength = be16toh(option->OptionLength);
+
+        const size_t optPayloadLength = option->OptionLength + dh_optPayload_offset;
+
+        log_debug("Option header: code=%d,length=%d bytes.", option->OptionCode, option->OptionLength);
+
+        switch (option->OptionCode) {
             case DHCPv6_OPTION_CLIENTID:
                 result.ClientIdentifier = option;
                 break;
+
             case DHCPv6_OPTION_SERVERID:
                 result.ServerIdentifier = option;
                 break;
-            case DHCPv6_OPTION_IA_PD:
-                result.success = false;
-                dh_optMultiPayload *newNode = new(dh_optMultiPayload);
-                newNode->value = option;
 
-                if (result.IA_PDList != NULL) {
+            case DHCPv6_OPTION_IA_PD: {
+                result.success = false;
+                dh_optMultiPayload *newNode = new(dh_optMultiPayload);  // 更安全的分配方式
+                if (newNode == NULL) {
+                    log_error("Memory allocation failed");
+                }
+
+                newNode->value = option;
+                newNode->next = NULL;
+
+                if (result.IA_PDList == NULL) {
                     result.IA_PDList = newNode;
                 } else {
-                    dh_optMultiPayload *currentNode = result.IA_PDList;
-                    while (currentNode->next != NULL)
-                        currentNode = currentNode->next;
-                    currentNode->next = newNode;
+                    // 使用尾指针优化链表插入
+                    dh_optMultiPayload **current = &result.IA_PDList;
+                    while (*current != NULL) {
+                        current = &(*current)->next;
+                    }
+                    *current = newNode;
                 }
+                break;
+            }
+
+            default:
+                // 处理未知选项或跳过
                 break;
         }
 
-        int optPayloadLength = be16toh(readerPtr->OptionLength) + sizeof(uint16_t) + sizeof(uint16_t);
         unreadDataLength -= optPayloadLength;
-        readerPtr += optPayloadLength;
+        if (unreadDataLength <= 0) {
+            break;
+        }
+
+        // 使用指针算术确保对齐
+        readerPtr = (dh_optPayload *) ((uint8_t *) readerPtr + optPayloadLength);
+
+        // 检查指针是否越界
+        if ((uintptr_t) readerPtr > (uintptr_t) pkt + size) {
+            log_error("Option parsing out of bounds");
+            break;
+        }
     }
 
     result.success = true;

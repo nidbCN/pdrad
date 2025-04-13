@@ -149,10 +149,10 @@ int main() {
         log_error("`recvfrom` call failed: %s", strerror(errno));
     }
 
-    log_info("rec %ld bytes\n", recLen);
+    log_info("received %ld bytes.", recLen);
     print_memory_hex(recBuf, recLen);
 
-    log_info("msg-type: %d, trans-id: %d,%d,%d\n", recBuf->MsgType,
+    log_info("msg-type: %d, trans-id: 0x%x%x%x.", recBuf->MsgType,
              recBuf->TransactionId.TransactionId_0,
              recBuf->TransactionId.TransactionId_1,
              recBuf->TransactionId.TransactionId_2);
@@ -167,12 +167,19 @@ int main() {
 
     dh_optPayload *pd = parsed.IA_PDList->value;
     dh_opt_IA_PD *pdData = (dh_opt_IA_PD *) pd->OptionData;
-    dh_opt_IA_Prefix *prefix = (dh_opt_IA_Prefix *) pdData->Options;
+    dh_optPayload *pdOption = (dh_optPayload *) pdData->Options;
+    dh_opt_IA_Prefix *prefix = (dh_opt_IA_Prefix *) pdOption->OptionData;
 
     char *prefixStr = alloca(sizeof(char) * 40);
 
-    inet_ntop(AF_INET6, &prefix->Prefix, prefixStr, INET6_ADDRSTRLEN);
-    log_info("not converted: %s", prefixStr);
+    struct in6_addr addr;
+
+    uint64_t *addrPtr = (uint64_t *) &addr;
+    addrPtr[0] = htole64(prefix->Prefix[0]);
+    addrPtr[1] = htole64(prefix->Prefix[1]);
+
+    inet_ntop(AF_INET6, &addr, prefixStr, INET6_ADDRSTRLEN);
+    log_info("Success got PD Prefix from DHCPv6 server: `%s`", prefixStr);
 
     close(handler);
     return 0;

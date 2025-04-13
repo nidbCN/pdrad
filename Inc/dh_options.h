@@ -166,7 +166,7 @@ typedef struct _dh_opt_IA_Prefix_option
     uint32_t PreferredLifetime;
     uint32_t ValidLifetime;
     uint8_t PrefixLength;
-    struct in6_addr Prefix;
+    uint64_t Prefix[2];
     dh_optPayload Options[];
 } __attribute__((packed)) dh_opt_IA_Prefix;
 

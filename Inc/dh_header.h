@@ -13,6 +13,8 @@ typedef struct _dh_pkt_TransactionId {
     uint8_t TransactionId_2;
 }  __attribute__((packed)) dh_pkt_TransactionId;
 
+#define dh_pkt_offset (sizeof(uint8_t) + sizeof(dh_pkt_TransactionId))
+
 typedef struct _dh_pkt {
     uint8_t MsgType;
     dh_pkt_TransactionId TransactionId;
@@ -36,15 +38,15 @@ enum dh_msgType {
 };
 
 size_t dh_createPacket(const dh_pkt **pktPtr, enum dh_msgType msgType, dh_pkt_TransactionId transId,
-                        const dh_optPayload *optPtrList[], uint optPtrListLength);
+                       const dh_optPayload *optPtrList[], uint optPtrListLength);
 
 size_t dh_createSolicitPacket(const dh_pkt **pktPtr, const dh_opt_ClientIdentifier *clientId, size_t clientSize,
-                               uint16_t elapsedTime,
-                               uint32_t IA_Id);
+                              uint16_t elapsedTime,
+                              uint32_t IA_Id);
 
 size_t dh_createRapidSolicitPacket(const dh_pkt **pktPtr, const dh_opt_ClientIdentifier *clientId, size_t clientSize,
-                                    uint16_t elapsedTime,
-                                    uint32_t IA_Id);
+                                   uint16_t elapsedTime,
+                                   uint32_t IA_Id);
 
 size_t dh_CreateCustomizedSolicitPacket(
         const dh_pkt **pktPtr,
