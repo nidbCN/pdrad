@@ -7,7 +7,8 @@
 #include <netinet/in.h>
 #include "dh_header.h"
 
-enum dh_options {
+enum dh_options
+{
     DHCPv6_OPTION_CLIENTID = 1,
     DHCPv6_OPTION_SERVERID = 2,
     DHCPv6_OPTION_IA_NA = 3,
@@ -144,14 +145,16 @@ enum dh_options {
     DHCPv6_OPTION_IPV6_Address_ANDSF = 136
 };
 
-typedef struct _dh_optPayload {
+typedef struct _dh_optPayload
+{
     uint16_t OptionCode;
     uint16_t OptionLength;
     uint8_t OptionData[];
 } __attribute__((packed)) dh_optPayload;
 
 // multiple, may contains `IA Prefix Option`
-typedef struct _dh_opt_IA_PD {
+typedef struct _dh_opt_IA_PD
+{
     uint32_t IA_id;
     uint32_t Time1;
     uint32_t Time2;
@@ -159,7 +162,8 @@ typedef struct _dh_opt_IA_PD {
 } __attribute__((packed)) dh_opt_IA_PD;
 
 // multiple, may contains `Status Code Option`
-typedef struct _dh_opt_IA_Prefix_option {
+typedef struct _dh_opt_IA_Prefix_option
+{
     uint32_t PreferredLifetime;
     uint32_t ValidLifetime;
     uint8_t PrefixLength;
@@ -167,51 +171,71 @@ typedef struct _dh_opt_IA_Prefix_option {
     dh_optPayload[] Options;
 } __attribute__((packed)) dh_opt_IA_Prefix;
 
-typedef struct _dh_opt_status_code {
+typedef struct _dh_opt_status_code
+{
     uint16_t StatusCode;
     char StatusMessage[];
 } __attribute__((packed)) dh_opt_StatusCode;
 
-typedef struct _dh_opt_RapidCommit {
+typedef struct _dh_opt_RapidCommit
+{
 } dh_opt_RapidCommit;
 
-typedef struct _dh_opt_ElapsedTime {
+typedef struct _dh_opt_ElapsedTime
+{
     uint16_t ElapsedTime;
 } __attribute__((packed)) dh_opt_ElapsedTime;
 
-enum dh_DUIdType {
+enum dh_DUIdType
+{
     DUId_LLT = 1,
     DUId_En = 2,
     DUId_LL = 3,
     DUId_UUId = 4,
 };
 
-typedef struct _dh_opt_ClientIdentifier {
+typedef union _dh_DUId
+{
+    struct _dh_opt_ClientIdentifier_DUId_LLT
+    {
+        uint16_t HardwareType;
+        uint32_t Time;
+        uint8_t LinkLayerAddress[];
+    } __attribute__((packed)) DUId_LLT;
+#define DH_DUID_LLT_LEN (sizeof(struct _dh_opt_ClientIdentifier_DUId_LLT))
+
+    struct _dh_opt_ClientIdentifier_DUId_En
+    {
+        uint32_t EnterpriseNumber;
+        uint8_t Identifier[];
+    } __attribute__((packed)) DUId_En;
+#define DH_DUID_EN_LEN (sizeof(struct _dh_opt_ClientIdentifier_DUId_En))
+
+    struct _dh_opt_ClientIdentifier_DUId_LL
+    {
+        uint16_t HardwareType;
+        uint8_t LinkLayerAddress[];
+    } __attribute__((packed)) DUId_LL;
+#define DH_DUID_LL_LEN (sizeof(struct _dh_opt_ClientIdentifier_DUId_LL))
+
+    uint32_t DUId_UUId[4];
+#define DH_DUID_UUID_LEN (sizeof(uint32_t) * 4)
+} __attribute__((packed)) dh_DUId;
+
+typedef struct _dh_opt_ClientIdentifier
+{
     uint16_t DUIdType;
-    union {
-        struct {
-            uint16_t HardwareType;
-            uint32_t Time;
-            uint8_t LinkLayerAddress[];
-        } __attribute__((packed)) DUId_LLT;
-        struct {
-            uint32_t EnterpriseNumber;
-            uint8_t Identifier[];
-        } __attribute__((packed)) DUId_En;
-        struct {
-            uint16_t HardwareType;
-            uint8_t LinkLayerAddress[];
-        } __attribute__((packed)) DUId_LL;
-        uint32_t DUId_UUId[4];
-    } __attribute__((packed)) Data;
+    dh_DUId DUIdData;
 } __attribute__((packed)) dh_opt_ClientIdentifier;
 
-typedef struct _dh_optMultiPayload {
+typedef struct _dh_optMultiPayload
+{
     dh_optPayload *value;
     struct _dh_optMultiPayload *next;
 } dh_optMultiPayload;
 
-typedef struct _DHCPv6_Reader_result {
+typedef struct _DHCPv6_Reader_result
+{
     bool success;
     dh_optPayload *ClientIdentifier;
     dh_optPayload *ServerIdentifier;
@@ -240,4 +264,4 @@ dh_optPayload *dh_createOption_ElapsedTime(uint16_t time);
 // NOTE: do not free *pkt, it's used in dh_parsedOptions
 dh_parsedOptions dh_parseOptions(const dh_pkt *pkt, size_t size);
 
-#endif //PDRAD_DHCPv6_OPTIONS_H
+#endif // PDRAD_DHCPv6_OPTIONS_H

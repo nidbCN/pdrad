@@ -5,6 +5,8 @@
 #include <stdbool.h>
 #include "dh_options.h"
 
+#define DH_ALL_DHCP_RELAY_AGENTS_AND_SERVERS ("ff02::1:2")
+
 typedef struct _dh_pkt_TransactionId {
     uint8_t TransactionId_0;
     uint8_t TransactionId_1;
