@@ -175,8 +175,8 @@ int main() {
     struct in6_addr addr;
 
     uint64_t *addrPtr = (uint64_t *) &addr;
-    addrPtr[0] = htole64(prefix->Prefix[0]);
-    addrPtr[1] = htole64(prefix->Prefix[1]);
+    addrPtr[1] = htole64(prefix->Prefix[0]);
+    addrPtr[0] = htole64(prefix->Prefix[1]);
 
     inet_ntop(AF_INET6, &addr, prefixStr, INET6_ADDRSTRLEN);
     log_info("Success got PD Prefix from DHCPv6 server: `%s`", prefixStr);
