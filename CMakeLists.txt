@@ -15,14 +15,21 @@ include_directories(Lib/Inc)
 add_executable(pdrad
         Lib/log.c
         Src/test.c
-        Src/dh_headers.c
+        Src/dh_packets.c
         Src/dh_options.c
         Src/collection.c
+        Src/ndp_packets.c
+        Inc/ndp_options.h
+        Src/ndp_options.c
 )
 
 add_library(libpdrad
         Lib/log.c
-        Src/dh_headers.c
+        Src/dh_packets.c
         Src/dh_options.c
         Src/collection.c
+        Inc/ndp_packets.h
+        Src/ndp_packets.c
+        Inc/ndp_options.h
+        Src/ndp_options.c
 )

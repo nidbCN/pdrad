@@ -1,36 +1,43 @@
-typedef struct _ndp_ra
-{
-    uint8_t Type;
-    uint8_t Code;
-    uint16_t CheckSum;
-    uint8_t CurHopLimit;
-    uint8_t Flags;
-    uint16_t RouterLifetime;
-    uint32_t ReachableTime;
-    uint32_t RetransTimer;
-    uint8_t Options[];
-} ndp_ra;
+#include <stdlib.h>
+#include <string.h>
+#include "ndp_packets.h"
+#include "ndp_options.h"
 
-enum ndp_ra_flag
-{
-    M = 0x80,
-    O = 0x40,
-    PrfHigh = 0x08,
-    PrfMedium = 0x00,
-    PrfLow = 0x18,
-    PrfInvaild = 0x10,
-    Reserved = 0x00
-};
+ndp_ra *ndp_ra_createPacket(
+        uint8_t curHopLimit,
+        uint16_t routerLifeTime,
+        uint32_t reachableTime,
+        uint32_t reTransTimer,
+        ndp_optPayload *optionsList[],
+        uint8_t optionsNum
+) {
 
-ndp_ra *ndp_createTypicalPacket(
-    ndp_optPayload *prefix,
-    ndp_optPayload *mtu,
-    ndp_optPayload *sourceLinkAddr)
-{
-    if(prefix == NULL || mtu == NULL || sourceLinkAddr == NULL)
-    return NULL;
+    size_t length = sizeof(ndp_ra);
 
-    ndp_ra* pkt = malloc();
+    for (int i = 0; i < optionsNum; ++i) {
+        length += optionsList[i]->Length * 8;
+    }
 
-    
+    ndp_ra *pkt = (ndp_ra *) malloc(length);
+    pkt->Type = 134;
+    pkt->Code = 0;
+    pkt->CheckSum = 0x00; // TODO: impl check sum
+    pkt->CurHopLimit = curHopLimit;
+
+#pragma clang diagnostic push
+#pragma ide diagnostic ignored "Simplify"
+    pkt->Flags = (!M) | (!O) & (0xC0);
+#pragma clang diagnostic pop
+    pkt->RouterLifetime = routerLifeTime;
+    pkt->ReachableTime = reachableTime;
+    pkt->ReTransTimer = reTransTimer;
+
+    ndp_optPayload *options = (ndp_optPayload *) pkt->Options;
+    for (int i = 0; i < optionsNum; ++i) {
+        uint optionLength = optionsList[i]->Length * 8;
+        memcpy(options, optionsList[i], optionLength);
+        options = (ndp_optPayload *) ((uintptr_t) options + optionLength);
+    }
+
+    return pkt;
 }

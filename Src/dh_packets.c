@@ -1,6 +1,6 @@
 #include <stdlib.h>
 #include <string.h>
-#include "dh_header.h"
+#include "dh_packets.h"
 #include "log.h"
 #include "global.h"
 
@@ -159,7 +159,7 @@ dh_parsedOptions dh_parseOptions(const dh_pkt *pkt, size_t size) {
 
             case DHCPv6_OPTION_IA_PD: {
                 result.success = false;
-                dh_optMultiPayload *newNode = new(dh_optMultiPayload);  // 更安全的分配方式
+                dh_optMultiPayload *newNode = new(dh_optMultiPayload);
                 if (newNode == NULL) {
                     log_error("Memory allocation failed");
                 }

@@ -1,5 +1,5 @@
-#ifndef PDRAD_DH_HEADER_H
-#define PDRAD_DH_HEADER_H
+#ifndef PDRAD_DH_PACKETS_H
+#define PDRAD_DH_PACKETS_H
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -64,4 +64,4 @@ size_t dh_createCustomizedRequestPacket(const dh_pkt **pktPtr, const dh_optPaylo
 // NOTE: do not free *pkt, it's used in dh_parsedOptions
 dh_parsedOptions dh_parseOptions(const dh_pkt *pkt, size_t size);
 
-#endif //PDRAD_DH_HEADER_H
+#endif //PDRAD_DH_PACKETS_H

@@ -8,7 +8,7 @@
 #include <errno.h>
 #include <sys/ioctl.h>
 #include <net/if.h>
-#include "dh_header.h"
+#include "dh_packets.h"
 #include "dh_options.h"
 #include "log.h"
 
@@ -44,7 +44,14 @@ void print_memory_hex(const void *mem, size_t size) {
     printf("\n");
 }
 
+int sendAndReceivedDhcpPd();
+
 int main() {
+    sendAndReceivedDhcpPd();
+    return 0;
+}
+
+int sendAndReceivedDhcpPd() {
     // CLIENT ID
     //      opt type enid id
     uint8_t id[] = {0x0d, 0x00, 0x07, 0x21};
@@ -87,6 +94,12 @@ int main() {
     const dh_pkt *pktPtr = NULL;
     size_t pktLength = dh_CreateCustomizedSolicitPacket(&pktPtr, clientId, esTime, IA_Prefix, 1, rapid);
 
+    // has been copy to packet
+    free(clientId);
+    free(esTime);
+    free(IA_Prefix);
+    free(rapid);
+
     log_info("Ready to send");
     print_memory_hex(pktPtr, pktLength);
 
@@ -101,7 +114,15 @@ int main() {
     // ioctl req
     struct ifreq *request = (struct ifreq *) malloc(sizeof(struct ifreq));
     strcpy(request->ifr_name, "ppp0");
-    setsockopt(handler, SOL_SOCKET, SO_BINDTODEVICE, (char *) request, sizeof(struct ifreq));
+    if (setsockopt(handler, SOL_SOCKET, SO_BINDTODEVICE, (char *) request, sizeof(struct ifreq)) < 0) {
+        log_error("Bind interface failed");
+        log_error(strerror(errno));
+        close(handler);
+        free(request);
+        return 1;
+    }
+
+    // request in use
 
     struct sockaddr_in6 server_addr;
     struct sockaddr_in6 client_addr;
@@ -138,7 +159,12 @@ int main() {
         log_error("ioctl error, can't get mtu: %s", strerror(errno));
     }
 
-    mtu = request->ifr_ifru.ifru_mtu;
+    if (request != NULL) {
+        mtu = request->ifr_ifru.ifru_mtu;
+    }
+
+    free(request);
+
     dh_pkt *recBuf = (dh_pkt *) malloc(mtu);
 
     socklen_t addrLen = sizeof(client_addr);
@@ -172,16 +198,16 @@ int main() {
 
     char *prefixStr = alloca(sizeof(char) * 40);
 
-    struct in6_addr addr;
+    inet_ntop(AF_INET6, prefix->Prefix, prefixStr, INET6_ADDRSTRLEN);
+    log_info("Success got prefix from DHCPv6 server: `%s/%d`, lifetime=%d, preferred lifetime=%d.",
+             prefixStr,
+             prefix->PrefixLength,
+             be32toh(prefix->ValidLifetime),
+             be32toh(prefix->PreferredLifetime)
+    );
 
-    uint64_t *addrPtr = (uint64_t *) &addr;
-    addrPtr[1] = htole64(prefix->Prefix[0]);
-    addrPtr[0] = htole64(prefix->Prefix[1]);
-
-    inet_ntop(AF_INET6, &addr, prefixStr, INET6_ADDRSTRLEN);
-    log_info("Success got PD Prefix from DHCPv6 server: `%s`", prefixStr);
-
+    free(recBuf);
     close(handler);
+
     return 0;
 }
-
