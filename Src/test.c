@@ -188,9 +188,6 @@ int sendAndReceivedDhcpPd() {
         log_error("parse failed.");
     }
 
-    log_info("server id:");
-    print_memory_hex(parsed.ServerIdentifier->OptionData, parsed.ServerIdentifier->OptionLength);
-
     dh_optPayload *pd = parsed.IA_PDList->value;
     dh_opt_IA_PD *pdData = (dh_opt_IA_PD *) pd->OptionData;
     dh_optPayload *pdOption = (dh_optPayload *) pdData->Options;
@@ -199,11 +196,11 @@ int sendAndReceivedDhcpPd() {
     char *prefixStr = alloca(sizeof(char) * 40);
 
     inet_ntop(AF_INET6, prefix->Prefix, prefixStr, INET6_ADDRSTRLEN);
-    log_info("Success got prefix from DHCPv6 server: `%s/%d`, lifetime=%d, preferred lifetime=%d.",
+    log_info("Parse success, prefix=`%s/%d`, preferred lifetime=%d, lifetime=%d.",
              prefixStr,
              prefix->PrefixLength,
-             be32toh(prefix->ValidLifetime),
-             be32toh(prefix->PreferredLifetime)
+             be32toh(prefix->PreferredLifetime),
+             be32toh(prefix->ValidLifetime)
     );
 
     free(recBuf);
