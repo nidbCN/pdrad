@@ -19,7 +19,6 @@ add_executable(pdrad
         Src/dh_options.c
         Src/collection.c
         Src/ndp_packets.c
-        Inc/ndp_options.h
         Src/ndp_options.c
 )
 
@@ -28,8 +27,6 @@ add_library(libpdrad
         Src/dh_packets.c
         Src/dh_options.c
         Src/collection.c
-        Inc/ndp_packets.h
         Src/ndp_packets.c
-        Inc/ndp_options.h
         Src/ndp_options.c
 )

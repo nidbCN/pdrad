@@ -8,13 +8,13 @@ typedef struct _ndp_optPayload {
     uint8_t Type;
     uint8_t Length; // include type and length, units in 8bytes/64bits
     uint8_t OptionData[];
-} ndp_optPayload;
+} __attribute__((packed)) ndp_optPayload;
 
 #define ndp_optOffset (sizeof(uint8_t) + sizeof(uint8_t))
 
 typedef struct _ndp_opt_LinkLayerAddress {
     uint8_t EtherAddress[6];
-} ndp_opt_LinkLayerAddress;
+} __attribute__((packed)) ndp_opt_LinkLayerAddress;
 
 typedef struct _ndp_opt_PrefixInformation {
     uint8_t PrefixLength;
@@ -23,7 +23,7 @@ typedef struct _ndp_opt_PrefixInformation {
     uint32_t PreferredLifetime;
     uint32_t Reserved;
     uint64_t Prefix[2];
-} ndp_opt_PrefixInformation;
+} __attribute__((packed)) ndp_opt_PrefixInformation;
 
 enum ndp_opt_PrefixInformationFlag {
     L = 0x80,
@@ -33,7 +33,7 @@ enum ndp_opt_PrefixInformationFlag {
 typedef struct _ndp_opt_Mtu {
     uint16_t Reserved;
     uint32_t Mtu;
-} ndp_opt_Mtu;
+} __attribute__((packed)) ndp_opt_Mtu;
 
 
 ndp_optPayload *ndp_createOptionSourceLinkLayerAddress(uint8_t etherAddr[6]);

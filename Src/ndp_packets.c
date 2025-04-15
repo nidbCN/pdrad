@@ -41,3 +41,49 @@ ndp_ra *ndp_ra_createPacket(
 
     return pkt;
 }
+
+struct ndp_pseudoHeader {
+    struct in6_addr SourceAddress;
+    struct in6_addr DestinationAddress;
+    uint32_t UpperLayerPacketLength;
+    uint8_t Zero[3];
+    uint8_t NextHeader;
+} __attribute__((packed));
+
+uint16_t ndp_checksum(struct in6_addr sourceAddr, struct in6_addr destAddr, ndp_ra *restrict packet, size_t size) {
+    if (packet == NULL || size == 0)
+        return 0;
+
+    packet->CheckSum = 0x00;
+
+    struct ndp_pseudoHeader header = {
+            .SourceAddress = sourceAddr,
+            .DestinationAddress = destAddr,
+            .UpperLayerPacketLength = size,
+            .Zero = {0x00, 0x00, 0x00},
+            .NextHeader= 58
+    };
+
+    const uint16_t *headerPtr = (const uint16_t *) &header;
+    uint sum = 0;
+
+    // 8b num / 2 = 16b num
+    for (size_t i = 0; i < sizeof(header) / 2; i++) {
+        sum += headerPtr[i];
+        // 处理进位
+        if (sum & 0xFFFF0000) {
+            sum = (sum & 0xFFFF) + (sum >> 16);
+        }
+    }
+
+    const uint16_t *pktPtr = (const uint16_t *) packet;
+    for (size_t i = 0; i < size / 2; i++) {
+        sum += pktPtr[i];
+        // 处理进位
+        if (sum & 0xFFFF0000) {
+            sum = (sum & 0xFFFF) + (sum >> 16);
+        }
+    }
+
+    return ~sum & 0xFFFF;
+}
