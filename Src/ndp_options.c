@@ -26,7 +26,6 @@ enum ndp_opt_PrefixInformationFlag
 {
     L = 0x80,
     A = 0x40,
-    Reserved = 0x00,
 };
 
 typedef struct _ndp_opt_Mtu
@@ -75,7 +74,7 @@ ndp_optPayload *ndp_createOptionPrefixInformation(
     ndp_opt_PrefixInformation *data = (ndp_opt_PrefixInformation *)&(option->OptionData);
 
     data->PrefixLength = prefixLength;
-    data->Flags = (uint8_t)flags;
+    data->Flags = (uint8_t)(flags & 0xC0);
     data->ValidLifetime = htobe32(vaildLifetime);
     data->PreferredLifetime = htobe32(preferredLifetime);
     data->Reserved = 0x00;
