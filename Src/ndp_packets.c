@@ -4,6 +4,8 @@
 #include "ndp_options.h"
 
 ndp_ra *ndp_ra_createPacket(
+        struct in6_addr sourceAddr,
+        struct in6_addr destAddr,
         uint8_t curHopLimit,
         uint16_t routerLifeTime,
         uint32_t reachableTime,
@@ -21,7 +23,6 @@ ndp_ra *ndp_ra_createPacket(
     ndp_ra *pkt = (ndp_ra *) malloc(length);
     pkt->Type = 134;
     pkt->Code = 0;
-    pkt->CheckSum = 0x00; // TODO: impl check sum
     pkt->CurHopLimit = curHopLimit;
 
 #pragma clang diagnostic push
@@ -39,6 +40,10 @@ ndp_ra *ndp_ra_createPacket(
         options = (ndp_optPayload *) ((uintptr_t) options + optionLength);
     }
 
+    // checksum
+    int sum = ndp_checksum(sourceAddr, destAddr, pkt, length);
+    pkt->CheckSum = sum;
+
     return pkt;
 }
 
@@ -49,6 +54,27 @@ struct ndp_pseudoHeader {
     uint8_t Zero[3];
     uint8_t NextHeader;
 } __attribute__((packed));
+
+uint16_t ndp_checksumCalCore(const uint16_t *data, size_t size) {
+    int sum = 0;
+    for (int i = 0; i < size / 2; ++i) {
+        sum += data[i];
+
+        if (sum & 0xFFFF0000) {
+            sum = (sum & 0xFFFF) + (sum >> 16);
+        }
+    }
+
+    if (size & 1) {
+        uint16_t final_byte = ((const uint8_t *) data)[size - 1] << 8;
+        sum += final_byte;
+        if (sum & 0xFFFF0000) {
+            sum = (sum & 0xFFFF) + (sum >> 16);
+        }
+    }
+
+    return sum;
+}
 
 uint16_t ndp_checksum(struct in6_addr sourceAddr, struct in6_addr destAddr, ndp_ra *restrict packet, size_t size) {
     if (packet == NULL || size == 0)
@@ -65,25 +91,8 @@ uint16_t ndp_checksum(struct in6_addr sourceAddr, struct in6_addr destAddr, ndp_
     };
 
     const uint16_t *headerPtr = (const uint16_t *) &header;
-    uint sum = 0;
-
-    // 8b num / 2 = 16b num
-    for (size_t i = 0; i < sizeof(header) / 2; i++) {
-        sum += headerPtr[i];
-        // 处理进位
-        if (sum & 0xFFFF0000) {
-            sum = (sum & 0xFFFF) + (sum >> 16);
-        }
-    }
-
-    const uint16_t *pktPtr = (const uint16_t *) packet;
-    for (size_t i = 0; i < size / 2; i++) {
-        sum += pktPtr[i];
-        // 处理进位
-        if (sum & 0xFFFF0000) {
-            sum = (sum & 0xFFFF) + (sum >> 16);
-        }
-    }
+    int sum = ndp_checksumCalCore(headerPtr, sizeof(header)) +
+              ndp_checksumCalCore((const uint16_t *) packet, size);
 
     return ~sum & 0xFFFF;
 }

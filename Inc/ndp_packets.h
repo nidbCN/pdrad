@@ -2,6 +2,7 @@
 #define PDRAD_NDP_PACKETS_H
 
 #include <stdint.h>
+#include <netinet/in.h>
 
 typedef struct _ndp_ra {
     uint8_t Type;
@@ -24,5 +25,7 @@ enum ndp_ra_flag {
     PrfInvalid = 0x10,
     Reserved = 0x00
 };
+
+uint16_t ndp_checksum(struct in6_addr sourceAddr, struct in6_addr destAddr, ndp_ra *restrict packet, size_t size);
 
 #endif //PDRAD_NDP_PACKETS_H

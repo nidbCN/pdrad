@@ -51,6 +51,39 @@ int main() {
     return 0;
 }
 
+int sendRA() {
+    char *ifName = "eth1";
+
+    // init a udp socket
+    int handler = socket(AF_INET6, SOCK_RAW, 0);
+    if (handler < 0) {
+        log_error("Socket creation failed.");
+        log_error(strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    // ioctl req
+    struct ifreq *request = (struct ifreq *) malloc(sizeof(struct ifreq));
+    strcpy(request->ifr_name, ifName);
+    if (setsockopt(handler, SOL_SOCKET, SO_BINDTODEVICE, (char *) request, sizeof(struct ifreq)) < 0) {
+        log_error("Bind interface failed");
+        log_error(strerror(errno));
+        close(handler);
+        free(request);
+        return 1;
+    }
+
+    if (ioctl(handler, SIOCGIFADDR, request) < 0) {
+        log_error("ioctl error, can't get addr: %s", strerror(errno));
+    }
+
+    if (request != NULL) {
+        //  struct sockaddr mtu = request->ifr_ifru.ifru_addr.sa_family;
+
+
+    }
+}
+
 int sendAndReceivedDhcpPd() {
     // CLIENT ID
     //      opt type enid id
