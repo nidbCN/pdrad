@@ -13,7 +13,6 @@ ndp_ra *ndp_ra_createPacket(
         ndp_optPayload *optionsList[],
         uint8_t optionsNum
 ) {
-
     size_t length = sizeof(ndp_ra);
 
     for (int i = 0; i < optionsNum; ++i) {
