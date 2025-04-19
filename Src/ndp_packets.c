@@ -4,14 +4,14 @@
 #include "ndp_options.h"
 
 ndp_ra *ndp_ra_createPacket(
-        struct in6_addr sourceAddr,
-        struct in6_addr destAddr,
-        uint8_t curHopLimit,
-        uint16_t routerLifeTime,
-        uint32_t reachableTime,
-        uint32_t reTransTimer,
-        ndp_optPayload *optionsList[],
-        uint8_t optionsNum
+    struct in6_addr sourceAddr,
+    struct in6_addr destAddr,
+    uint8_t curHopLimit,
+    uint16_t routerLifeTime,
+    uint32_t reachableTime,
+    uint32_t reTransTimer,
+    ndp_optPayload *optionsList[],
+    uint8_t optionsNum
 ) {
     size_t length = sizeof(ndp_ra);
 
@@ -19,20 +19,20 @@ ndp_ra *ndp_ra_createPacket(
         length += optionsList[i]->Length * 8;
     }
 
-    ndp_ra *pkt = (ndp_ra *) malloc(length);
+    ndp_ra *pkt = malloc(length);
     pkt->Type = 134;
-    pkt->Code = 0;
+    pkt->Code =  0;
     pkt->CurHopLimit = curHopLimit;
 
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "Simplify"
     pkt->Flags = (!M) | (!O) & (0xC0);
 #pragma clang diagnostic pop
-    pkt->RouterLifetime = routerLifeTime;
-    pkt->ReachableTime = reachableTime;
-    pkt->ReTransTimer = reTransTimer;
+    pkt->RouterLifetime = htobe16(routerLifeTime);
+    pkt->ReachableTime = htobe32(reachableTime);
+    pkt->ReTransTimer = htobe32(reTransTimer);
 
-    ndp_optPayload *options = (ndp_optPayload *) pkt->Options;
+    ndp_optPayload *options = pkt->Options;
     for (int i = 0; i < optionsNum; ++i) {
         uint optionLength = optionsList[i]->Length * 8;
         memcpy(options, optionsList[i], optionLength);
@@ -82,11 +82,11 @@ uint16_t ndp_checksum(struct in6_addr sourceAddr, struct in6_addr destAddr, ndp_
     packet->CheckSum = 0x00;
 
     struct ndp_pseudoHeader header = {
-            .SourceAddress = sourceAddr,
-            .DestinationAddress = destAddr,
-            .UpperLayerPacketLength = size,
-            .Zero = {0x00, 0x00, 0x00},
-            .NextHeader= 58
+        .SourceAddress = sourceAddr,
+        .DestinationAddress = destAddr,
+        .UpperLayerPacketLength = size,
+        .Zero = {0x00, 0x00, 0x00},
+        .NextHeader = IPPROTO_ICMPV6
     };
 
     const uint16_t *headerPtr = (const uint16_t *) &header;

@@ -14,7 +14,7 @@ size_t dh_createPacket(const dh_pkt **pktPtr, enum dh_msgType msgType, dh_pkt_Tr
         length += payload->OptionLength + dh_optPayload_offset;
     }
 
-    dh_pkt *packet = (dh_pkt *) malloc(length);
+    dh_pkt *packet = malloc(length);
     packet->MsgType = msgType;
     packet->TransactionId = transId;
 
@@ -38,11 +38,11 @@ size_t dh_createSolicitPacket(const dh_pkt **pktPtr, const dh_opt_ClientIdentifi
                               uint16_t elapsedTime,
                               uint32_t IA_Id) {
     return dh_CreateCustomizedSolicitPacket(
-            pktPtr,
-            dh_createCustomOptPayload(DHCPv6_OPTION_CLIENTID, (void *) clientId, clientSize),
-            dh_createOption_ElapsedTime(elapsedTime),
-            dh_createOption_IA_PD(IA_Id, NULL, 0),
-            0);
+        pktPtr,
+        dh_createCustomOptPayload(DHCPv6_OPTION_CLIENTID, (void *) clientId, clientSize),
+        dh_createOption_ElapsedTime(elapsedTime),
+        dh_createOption_IA_PD(IA_Id, NULL, 0),
+        0);
 }
 
 size_t dh_createRapidSolicitPacket(const dh_pkt **pktPtr, const dh_opt_ClientIdentifier *clientId, size_t clientSize,
@@ -51,19 +51,19 @@ size_t dh_createRapidSolicitPacket(const dh_pkt **pktPtr, const dh_opt_ClientIde
     dh_optPayload *rapidOption = dh_createOption_RapidCommit();
 
     return dh_CreateCustomizedSolicitPacket(
-            pktPtr,
-            dh_createCustomOptPayload(DHCPv6_OPTION_CLIENTID, clientId, clientSize),
-            dh_createOption_ElapsedTime(elapsedTime),
-            dh_createOption_IA_PD(IA_Id, NULL, 0),
-            1, rapidOption);
+        pktPtr,
+        dh_createCustomOptPayload(DHCPv6_OPTION_CLIENTID, clientId, clientSize),
+        dh_createOption_ElapsedTime(elapsedTime),
+        dh_createOption_IA_PD(IA_Id, NULL, 0),
+        1, rapidOption);
 }
 
 size_t dh_CreateCustomizedSolicitPacket(
-        const dh_pkt **pktPtr,
-        const dh_optPayload *clientId,
-        const dh_optPayload *elapsedTime,
-        const dh_optPayload *IA_PD,
-        uint optionsNum, ...) {
+    const dh_pkt **pktPtr,
+    const dh_optPayload *clientId,
+    const dh_optPayload *elapsedTime,
+    const dh_optPayload *IA_PD,
+    uint optionsNum, ...) {
     const dh_optPayload **optionsPtrList = malloc(sizeof(dh_optPayload *) * (optionsNum + 3));
 
     if (clientId == NULL || elapsedTime == NULL || IA_PD == NULL) {
@@ -114,7 +114,7 @@ size_t dh_createCustomizedRequestPacket(const dh_pkt **pktPtr, const dh_optPaylo
     return -1;
 }
 
-dh_parsedOptions dh_parseOptions(const dh_pkt *pkt, size_t size) {
+dh_parsedOptions dh_parseOptions(const dh_pkt *pkt, const size_t size) {
     log_debug("Start parse option, address: %p, length: %d.", pkt, size);
 
     dh_optPayload *readerPtr = (dh_optPayload *) ((size_t) pkt + dh_pkt_offset);
@@ -162,6 +162,7 @@ dh_parsedOptions dh_parseOptions(const dh_pkt *pkt, size_t size) {
                 dh_optMultiPayload *newNode = new(dh_optMultiPayload);
                 if (newNode == NULL) {
                     log_error("Memory allocation failed");
+                    break;
                 }
 
                 newNode->value = option;
@@ -170,7 +171,6 @@ dh_parsedOptions dh_parseOptions(const dh_pkt *pkt, size_t size) {
                 if (result.IA_PDList == NULL) {
                     result.IA_PDList = newNode;
                 } else {
-                    // 使用尾指针优化链表插入
                     dh_optMultiPayload **current = &result.IA_PDList;
                     while (*current != NULL) {
                         current = &(*current)->next;

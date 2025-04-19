@@ -11,20 +11,21 @@
 #include "dh_packets.h"
 #include "dh_options.h"
 #include "log.h"
+#include "ndp_packets.h"
 
 #define SERVER_ADDR "ff02::1:2"
 
 #define SERVER_PORT 547
 #define CLIENT_PORT 546
 
-void print_binary(uint8_t byte) {
+void print_binary(const uint8_t byte) {
     for (int i = 7; i >= 0; i--) {
         printf("%d", (byte >> i) & 1);
     }
 }
 
-void print_memory_little_endian(void *ptr, size_t size) {
-    uint8_t *bytes = (uint8_t *) ptr;
+void print_memory_little_endian(void *ptr, const size_t size) {
+    const uint8_t *bytes = (uint8_t *) ptr;
     printf("Little Endian: ");
     for (size_t i = 0; i < size; i++) {
         print_binary(bytes[i]);
@@ -33,8 +34,8 @@ void print_memory_little_endian(void *ptr, size_t size) {
     printf("\n");
 }
 
-void print_memory_hex(const void *mem, size_t size) {
-    const unsigned char *byte = (const unsigned char *) mem;
+void print_memory_hex(const void *mem, const size_t size) {
+    const unsigned char *byte = mem;
     for (size_t i = 0; i < size; i++) {
         printf("%02X", byte[i]);
         if (i < size - 1) {
@@ -46,25 +47,102 @@ void print_memory_hex(const void *mem, size_t size) {
 
 int sendAndReceivedDhcpPd();
 
+int sendRA();
+
 int main() {
-    sendAndReceivedDhcpPd();
+    // sendAndReceivedDhcpPd();
+    while (true) {
+        sendRA();
+        sleep(10);
+    }
+
     return 0;
 }
 
 int sendRA() {
-    char *ifName = "eth1";
+    const char *ifName = "enp4s0";
 
-    // init a udp socket
-    int handler = socket(AF_INET6, SOCK_RAW, 0);
+#define ADDR_V6_ALL_NODES_MULTICAST {.__in6_u.__u6_addr32 = { 0xff020000, 0x00000000, 0x00000000, 0x00000001 }}
+
+    const int routeHandler = socket(AF_INET6, SOCK_DGRAM, 0);
+    struct sockaddr_in6 destAddr = {0};
+    struct sockaddr_in6 srcAddr = {0};
+
+    struct in6_addr multicastAddr = ADDR_V6_ALL_NODES_MULTICAST;
+
+#if defined(__x86_64__) || defined(_M_X64) || defined(__aarch64__)
+    // addr is not const and be fill by each 32bits, this function will modify its content.
+#define htobe_inet6(addr) ((uint64_t*)&addr)[0] = htobe64((uint64_t)((uint32_t*)&addr)[0] << 32 | ((uint32_t*)&addr)[1]); ((uint64_t*)&addr)[1] = htobe64((uint64_t)((uint32_t*)&addr)[2] << 32 | ((uint32_t*)&addr)[3]);
+#else
+    // addr is not const and be fill by each 32bits, this function will modify its content.
+    #define htobe_inet6(addr) uint32_t* ptr = (uint32_t*)&addr; ptr[0] = htobe32(ptr[0]); ptr[1] = htobe32(ptr[1]); ptr[2] = htobe32(ptr[2]); ptr[3] = htobe32(ptr[3]);
+#endif
+
+    htobe_inet6(multicastAddr);
+
+    char *test = 0;
+    destAddr.sin6_family = AF_INET6;
+    destAddr.sin6_addr = multicastAddr;
+    destAddr.sin6_port = htobe16(0);
+
+    // ioctl req
+    struct ifreq *request = malloc(sizeof(struct ifreq));
+    strcpy(request->ifr_name, ifName);
+    if (setsockopt(routeHandler, SOL_SOCKET, SO_BINDTODEVICE, (char *) request, sizeof(struct ifreq)) < 0) {
+        log_error("Bind interface failed");
+        log_error(strerror(errno));
+        close(routeHandler);
+        free(request);
+        return 1;
+    }
+
+    if (connect(routeHandler, (struct sockaddr *) &destAddr, sizeof(destAddr)) < 0) {
+        perror("connect 失败");
+        close(routeHandler);
+        return EXIT_FAILURE;
+    }
+
+    // 获取系统为此连接选择的本地地址
+    socklen_t addrLen = sizeof(srcAddr);
+    if (getsockname(routeHandler, (struct sockaddr *) &srcAddr, &addrLen) < 0) {
+        perror("getsockname 失败");
+        close(routeHandler);
+        return EXIT_FAILURE;
+    }
+
+    ndp_optPayload *mtu = ndp_createOptionMtu(1500);
+
+    struct in6_addr testPrefix = {
+        .__in6_u.__u6_addr32 = {0xfd320026, 0x0d000721, 0x00000000, 0x00000000}
+    };
+
+    // htobe_inet6(testPrefix);
+    struct in6_addr *testPrefixPtr = &testPrefix;
+    ((uint64_t *) testPrefixPtr)[0] = (uint64_t) ((uint32_t *) testPrefixPtr)[0] << 32 | ((uint32_t *) testPrefixPtr)[
+                                          1];
+    ((uint64_t *) testPrefixPtr)[1] = (uint64_t) ((uint32_t *) testPrefixPtr)[2] << 32 | ((uint32_t *) testPrefixPtr)[
+                                          3];
+
+    ndp_optPayload *prefixInfo = ndp_createOptionPrefixInformation(64, L | !A, 60, 30, testPrefix);
+    ndp_optPayload **options = &prefixInfo;
+
+    const ndp_ra *raPacket = ndp_ra_createPacket(
+        srcAddr.sin6_addr,
+        destAddr.sin6_addr,
+        255,
+        60,
+        0x00,
+        0x00,
+        options,
+        1);
+
+    const int handler = socket(AF_INET6, SOCK_RAW, IPPROTO_ICMPV6);
     if (handler < 0) {
         log_error("Socket creation failed.");
         log_error(strerror(errno));
         exit(EXIT_FAILURE);
     }
 
-    // ioctl req
-    struct ifreq *request = (struct ifreq *) malloc(sizeof(struct ifreq));
-    strcpy(request->ifr_name, ifName);
     if (setsockopt(handler, SOL_SOCKET, SO_BINDTODEVICE, (char *) request, sizeof(struct ifreq)) < 0) {
         log_error("Bind interface failed");
         log_error(strerror(errno));
@@ -73,15 +151,25 @@ int sendRA() {
         return 1;
     }
 
-    if (ioctl(handler, SIOCGIFADDR, request) < 0) {
-        log_error("ioctl error, can't get addr: %s", strerror(errno));
-    }
+    // // ioctl req
+    // struct ifreq *request = (struct ifreq *) malloc(sizeof(struct ifreq));
+    // strcpy(request->ifr_name, ifName);
+    // if (setsockopt(handler, SOL_SOCKET, SO_BINDTODEVICE, (char *) request, sizeof(struct ifreq)) < 0) {
+    //     log_error("Bind interface failed");
+    //     log_error(strerror(errno));
+    //     close(handler);
+    //     free(request);
+    //     return 1;
+    // }
 
-    if (request != NULL) {
-        //  struct sockaddr mtu = request->ifr_ifru.ifru_addr.sa_family;
+    free(request);
 
+    sendto(handler, raPacket, sizeof(ndp_ra) + prefixInfo->Length * 8,
+           0, (struct sockaddr *) &destAddr,
+           sizeof(destAddr));
 
-    }
+    close(handler);
+    close(routeHandler);
 }
 
 int sendAndReceivedDhcpPd() {
@@ -145,9 +233,9 @@ int sendAndReceivedDhcpPd() {
     }
 
     // ioctl req
-    struct ifreq *request = (struct ifreq *) malloc(sizeof(struct ifreq));
+    struct ifreq *request = malloc(sizeof(struct ifreq));
     strcpy(request->ifr_name, "ppp0");
-    if (setsockopt(handler, SOL_SOCKET, SO_BINDTODEVICE, (char *) request, sizeof(struct ifreq)) < 0) {
+    if (setsockopt(handler, IPPROTO_UDP, IPV6_MULTICAST_IF, (char *) request, sizeof(struct ifreq)) < 0) {
         log_error("Bind interface failed");
         log_error(strerror(errno));
         close(handler);

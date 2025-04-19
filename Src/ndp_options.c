@@ -2,11 +2,11 @@
 #include <stdlib.h>
 #include "ndp_options.h"
 
-ndp_optPayload *ndp_createOptionLinkLayerAddressCore(uint8_t type, uint8_t etherAddr[6]) {
+ndp_optPayload *ndp_createOptionLinkLayerAddressCore(const uint8_t type, uint8_t etherAddr[6]) {
     if (type != 1 && type != 2)
         return NULL;
 
-    ndp_optPayload *option = (ndp_optPayload *) malloc(ndp_optOffset + 6);
+    ndp_optPayload *option = malloc(ndp_optOffset + 6);
     option->Type = type;
     option->Length = 1;
 
@@ -26,11 +26,11 @@ ndp_optPayload *ndp_createOptionTargetLinkLayerAddress(uint8_t etherAddr[6]) {
 }
 
 ndp_optPayload *ndp_createOptionPrefixInformation(
-        uint8_t prefixLength,
-        enum ndp_opt_PrefixInformationFlag flags,
-        uint32_t validLifetime,
-        uint32_t preferredLifetime,
-        struct in6_addr prefix) {
+    uint8_t prefixLength,
+    enum ndp_opt_PrefixInformationFlag flags,
+    uint32_t validLifetime,
+    uint32_t preferredLifetime,
+    struct in6_addr prefix) {
     ndp_optPayload *option = (ndp_optPayload *) malloc(ndp_optOffset + sizeof(ndp_opt_PrefixInformation));
     option->Type = 3;
     option->Length = 4;
@@ -50,8 +50,8 @@ ndp_optPayload *ndp_createOptionPrefixInformation(
     return option;
 }
 
-ndp_optPayload *ndp_createOptionMtu(uint32_t mtu) {
-    ndp_optPayload *option = (ndp_optPayload *) malloc(ndp_optOffset + sizeof(ndp_opt_Mtu));
+ndp_optPayload *ndp_createOptionMtu(const uint32_t mtu) {
+    ndp_optPayload *option = malloc(ndp_optOffset + sizeof(ndp_opt_Mtu));
     option->Type = 5;
     option->Length = 1;
 

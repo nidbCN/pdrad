@@ -41,12 +41,19 @@ ndp_optPayload *ndp_createOptionSourceLinkLayerAddress(uint8_t etherAddr[6]);
 ndp_optPayload *ndp_createOptionTargetLinkLayerAddress(uint8_t etherAddr[6]);
 
 ndp_optPayload *ndp_createOptionPrefixInformation(
-        uint8_t prefixLength,
-        enum ndp_opt_PrefixInformationFlag flags,
-        uint32_t validLifetime,
-        uint32_t preferredLifetime,
-        struct in6_addr prefix);
+    uint8_t prefixLength,
+    enum ndp_opt_PrefixInformationFlag flags,
+    uint32_t validLifetime,
+    uint32_t preferredLifetime,
+    struct in6_addr prefix);
 
 ndp_optPayload *ndp_createOptionMtu(uint32_t mtu);
+
+typedef struct _ndp_parsedOptions {
+    ndp_opt_LinkLayerAddress SourceLinkLayerAddress;
+    ndp_opt_LinkLayerAddress TargetLinkLayerAddress;
+    ndp_opt_PrefixInformation PrefixInformation;
+    ndp_opt_Mtu Mtu;
+} ndp_parsedOptions;
 
 #endif //PDRAD_NDP_OPTIONS_H
