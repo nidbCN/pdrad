@@ -18,27 +18,34 @@
 #define SERVER_PORT 547
 #define CLIENT_PORT 546
 
-void print_binary(const uint8_t byte) {
-    for (int i = 7; i >= 0; i--) {
+void print_binary(const uint8_t byte)
+{
+    for (int i = 7; i >= 0; i--)
+    {
         printf("%d", (byte >> i) & 1);
     }
 }
 
-void print_memory_little_endian(void *ptr, const size_t size) {
-    const uint8_t *bytes = (uint8_t *) ptr;
+void print_memory_little_endian(void *ptr, const size_t size)
+{
+    const uint8_t *bytes = (uint8_t *)ptr;
     printf("Little Endian: ");
-    for (size_t i = 0; i < size; i++) {
+    for (size_t i = 0; i < size; i++)
+    {
         print_binary(bytes[i]);
         printf(" ");
     }
     printf("\n");
 }
 
-void print_memory_hex(const void *mem, const size_t size) {
+void print_memory_hex(const void *mem, const size_t size)
+{
     const unsigned char *byte = mem;
-    for (size_t i = 0; i < size; i++) {
+    for (size_t i = 0; i < size; i++)
+    {
         printf("%02X", byte[i]);
-        if (i < size - 1) {
+        if (i < size - 1)
+        {
             printf(" ");
         }
     }
@@ -47,22 +54,51 @@ void print_memory_hex(const void *mem, const size_t size) {
 
 int sendAndReceivedDhcpPd();
 
-int sendRA();
+int sendRA(int fd);
 
-int main() {
+void ReceiveRS(int fd)
+{
+    int mtu = 1500;
+    void* recBuf = alloca(mtu);
+    ssize_t recLen = recvfrom(fd, recBuf, mtu, 0,
+                              (struct sockaddr *)&client_addr, &addrLen);
+}
+
+int main()
+{
     // sendAndReceivedDhcpPd();
-    while (true) {
-        sendRA();
-        sleep(10);
+
+    int raHandler = socket(AF_INET6, SOCK_RAW, IPPROTO_ICMPV6);
+    if (handler < 0)
+    {
+        log_error("Socket creation failed.");
+        log_error(strerror(errno));
+        exit(EXIT_FAILURE);
     }
+
+    if (setsockopt(handler, SOL_SOCKET, SO_BINDTODEVICE, (char *)request, sizeof(struct ifreq)) < 0)
+    {
+        log_error("Bind interface failed");
+        log_error(strerror(errno));
+        close(handler);
+        free(request);
+        return 1;
+    }
+    sendRA(handler);
+
+    free(raHandler);
 
     return 0;
 }
 
-int sendRA() {
+int sendRA(int fd)
+{
     const char *ifName = "enp4s0";
 
-#define ADDR_V6_ALL_NODES_MULTICAST {.__in6_u.__u6_addr32 = { 0xff020000, 0x00000000, 0x00000000, 0x00000001 }}
+#define ADDR_V6_ALL_NODES_MULTICAST                                             \
+    {                                                                           \
+        .__in6_u.__u6_addr32 = {0xff020000, 0x00000000, 0x00000000, 0x00000001} \
+    }
 
     const int routeHandler = socket(AF_INET6, SOCK_DGRAM, 0);
     struct sockaddr_in6 destAddr = {0};
@@ -80,7 +116,8 @@ int sendRA() {
     // ioctl req
     struct ifreq *request = malloc(sizeof(struct ifreq));
     strcpy(request->ifr_name, ifName);
-    if (setsockopt(routeHandler, SOL_SOCKET, SO_BINDTODEVICE, (char *) request, sizeof(struct ifreq)) < 0) {
+    if (setsockopt(routeHandler, SOL_SOCKET, SO_BINDTODEVICE, (char *)request, sizeof(struct ifreq)) < 0)
+    {
         log_error("Bind interface failed");
         log_error(strerror(errno));
         close(routeHandler);
@@ -88,7 +125,8 @@ int sendRA() {
         return 1;
     }
 
-    if (connect(routeHandler, (struct sockaddr *) &destAddr, sizeof(destAddr)) < 0) {
+    if (connect(routeHandler, (struct sockaddr *)&destAddr, sizeof(destAddr)) < 0)
+    {
         perror("connect 失败");
         close(routeHandler);
         return EXIT_FAILURE;
@@ -96,7 +134,8 @@ int sendRA() {
 
     // 获取系统为此连接选择的本地地址
     socklen_t addrLen = sizeof(srcAddr);
-    if (getsockname(routeHandler, (struct sockaddr *) &srcAddr, &addrLen) < 0) {
+    if (getsockname(routeHandler, (struct sockaddr *)&srcAddr, &addrLen) < 0)
+    {
         perror("getsockname 失败");
         close(routeHandler);
         return EXIT_FAILURE;
@@ -105,15 +144,12 @@ int sendRA() {
     ndp_optPayload *mtu = ndp_createOptionMtu(1500);
 
     struct in6_addr testPrefix = {
-        .__in6_u.__u6_addr32 = {0xfd320026, 0x0d000721, 0x00000000, 0x00000000}
-    };
+        .__in6_u.__u6_addr32 = {0xfd320026, 0x0d000721, 0x00000000, 0x00000000}};
 
     // htobe_inet6(testPrefix);
     struct in6_addr *testPrefixPtr = &testPrefix;
-    ((uint64_t *) testPrefixPtr)[0] = (uint64_t) ((uint32_t *) testPrefixPtr)[0] << 32 | ((uint32_t *) testPrefixPtr)[
-                                          1];
-    ((uint64_t *) testPrefixPtr)[1] = (uint64_t) ((uint32_t *) testPrefixPtr)[2] << 32 | ((uint32_t *) testPrefixPtr)[
-                                          3];
+    ((uint64_t *)testPrefixPtr)[0] = (uint64_t)((uint32_t *)testPrefixPtr)[0] << 32 | ((uint32_t *)testPrefixPtr)[1];
+    ((uint64_t *)testPrefixPtr)[1] = (uint64_t)((uint32_t *)testPrefixPtr)[2] << 32 | ((uint32_t *)testPrefixPtr)[3];
 
     ndp_optPayload *prefixInfo = ndp_createOptionPrefixInformation(64, L | !A, 60, 30, testPrefix);
     ndp_optPayload **options = &prefixInfo;
@@ -128,20 +164,7 @@ int sendRA() {
         options,
         1);
 
-    const int handler = socket(AF_INET6, SOCK_RAW, IPPROTO_ICMPV6);
-    if (handler < 0) {
-        log_error("Socket creation failed.");
-        log_error(strerror(errno));
-        exit(EXIT_FAILURE);
-    }
-
-    if (setsockopt(handler, SOL_SOCKET, SO_BINDTODEVICE, (char *) request, sizeof(struct ifreq)) < 0) {
-        log_error("Bind interface failed");
-        log_error(strerror(errno));
-        close(handler);
-        free(request);
-        return 1;
-    }
+    const int handler = fd;
 
     // // ioctl req
     // struct ifreq *request = (struct ifreq *) malloc(sizeof(struct ifreq));
@@ -157,20 +180,24 @@ int sendRA() {
     free(request);
 
     sendto(handler, raPacket, sizeof(ndp_ra) + prefixInfo->Length * 8,
-           0, (struct sockaddr *) &destAddr,
+           0, (struct sockaddr *)&destAddr,
            sizeof(destAddr));
 
-    close(handler);
+    free(prefixInfo);
+    free(raPacket);
+
     close(routeHandler);
 }
 
-int sendAndReceivedDhcpPd() {
+int sendAndReceivedDhcpPd()
+{
     // CLIENT ID
     //      opt type enid id
     uint8_t id[] = {0x0d, 0x00, 0x07, 0x21};
     dh_optPayload *clientId = dh_createOption_ClientIdentifier_En(4107, id, 4);
 
-    if (clientId == NULL) {
+    if (clientId == NULL)
+    {
         log_error("DHCPv6 CLIENT ID payload init failed.");
         exit(EXIT_FAILURE);
     }
@@ -179,7 +206,8 @@ int sendAndReceivedDhcpPd() {
     // ES TIME
     //    opt time
     dh_optPayload *esTime = dh_createOption_ElapsedTime(0);
-    if (esTime == NULL) {
+    if (esTime == NULL)
+    {
         log_error("DHCPv6 ELAPSED TIME payload init failed.");
         exit(EXIT_FAILURE);
     }
@@ -189,7 +217,8 @@ int sendAndReceivedDhcpPd() {
     // IA PD
     dh_optPayload *IA_Prefix = dh_createOption_IA_PD(0x0d0007021, NULL, 0);
 
-    if (IA_Prefix == NULL) {
+    if (IA_Prefix == NULL)
+    {
         log_error("DHCPv6 PD payload init failed.");
         exit(EXIT_FAILURE);
     }
@@ -198,7 +227,8 @@ int sendAndReceivedDhcpPd() {
     // RAPID COMMIT
     //   opt rapid
     dh_optPayload *rapid = dh_createOption_RapidCommit();
-    if (rapid == NULL) {
+    if (rapid == NULL)
+    {
         log_error("DHCPv6 RAPID COMMIT payload init failed.");
         exit(EXIT_FAILURE);
     }
@@ -218,7 +248,8 @@ int sendAndReceivedDhcpPd() {
 
     // init a udp socket
     int handler = socket(AF_INET6, SOCK_DGRAM, 0);
-    if (handler < 0) {
+    if (handler < 0)
+    {
         log_error("Socket creation failed.");
         log_error(strerror(errno));
         exit(EXIT_FAILURE);
@@ -227,7 +258,8 @@ int sendAndReceivedDhcpPd() {
     // ioctl req
     struct ifreq *request = malloc(sizeof(struct ifreq));
     strcpy(request->ifr_name, "ppp0");
-    if (setsockopt(handler, IPPROTO_UDP, IPV6_MULTICAST_IF, (char *) request, sizeof(struct ifreq)) < 0) {
+    if (setsockopt(handler, IPPROTO_UDP, IPV6_MULTICAST_IF, (char *)request, sizeof(struct ifreq)) < 0)
+    {
         log_error("Bind interface failed");
         log_error(strerror(errno));
         close(handler);
@@ -244,7 +276,8 @@ int sendAndReceivedDhcpPd() {
     client_addr.sin6_port = htons(CLIENT_PORT);
     client_addr.sin6_addr = in6addr_any;
 
-    if (bind(handler, (struct sockaddr *) &client_addr, sizeof(client_addr)) < 0) {
+    if (bind(handler, (struct sockaddr *)&client_addr, sizeof(client_addr)) < 0)
+    {
         log_error("Bind failed");
         log_error(strerror(errno));
         close(handler);
@@ -257,7 +290,8 @@ int sendAndReceivedDhcpPd() {
     inet_pton(AF_INET6, SERVER_ADDR, &server_addr.sin6_addr);
 
     if (sendto(handler, pktPtr, pktLength, 0,
-               (struct sockaddr *) &server_addr, sizeof(server_addr)) < 0) {
+               (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0)
+    {
         log_error("Send failed.");
         log_error(strerror(errno));
         close(handler);
@@ -268,23 +302,26 @@ int sendAndReceivedDhcpPd() {
 
     int mtu = 1500;
 
-    if (ioctl(handler, SIOCGIFMTU, request) < 0) {
+    if (ioctl(handler, SIOCGIFMTU, request) < 0)
+    {
         log_error("ioctl error, can't get mtu: %s", strerror(errno));
     }
 
-    if (request != NULL) {
+    if (request != NULL)
+    {
         mtu = request->ifr_ifru.ifru_mtu;
     }
 
     free(request);
 
-    dh_pkt *recBuf = (dh_pkt *) malloc(mtu);
+    dh_pkt *recBuf = (dh_pkt *)malloc(mtu);
 
     socklen_t addrLen = sizeof(client_addr);
     ssize_t recLen = recvfrom(handler, recBuf, mtu, 0,
-                              (struct sockaddr *) &client_addr, &addrLen);
+                              (struct sockaddr *)&client_addr, &addrLen);
 
-    if (recLen < 0) {
+    if (recLen < 0)
+    {
         log_error("`recvfrom` call failed: %s", strerror(errno));
     }
 
@@ -297,14 +334,15 @@ int sendAndReceivedDhcpPd() {
              recBuf->TransactionId.TransactionId_2);
 
     dh_parsedOptions parsed = dh_parseOptions(recBuf, recLen);
-    if (!parsed.success) {
+    if (!parsed.success)
+    {
         log_error("parse failed.");
     }
 
     dh_optPayload *pd = parsed.IA_PDList->value;
-    dh_opt_IA_PD *pdData = (dh_opt_IA_PD *) pd->OptionData;
-    dh_optPayload *pdOption = (dh_optPayload *) pdData->Options;
-    dh_opt_IA_Prefix *prefix = (dh_opt_IA_Prefix *) pdOption->OptionData;
+    dh_opt_IA_PD *pdData = (dh_opt_IA_PD *)pd->OptionData;
+    dh_optPayload *pdOption = (dh_optPayload *)pdData->Options;
+    dh_opt_IA_Prefix *prefix = (dh_opt_IA_Prefix *)pdOption->OptionData;
 
     char *prefixStr = alloca(sizeof(char) * 40);
 
@@ -313,8 +351,7 @@ int sendAndReceivedDhcpPd() {
              prefixStr,
              prefix->PrefixLength,
              be32toh(prefix->PreferredLifetime),
-             be32toh(prefix->ValidLifetime)
-    );
+             be32toh(prefix->ValidLifetime));
 
     free(recBuf);
     close(handler);
