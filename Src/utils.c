@@ -1,5 +1,3 @@
-
-
 int utils_IfNameToIndex(const char *ifName)
 {
     struct ifreq *request = (struct ifreq *) malloc(sizeof(struct ifreq));
