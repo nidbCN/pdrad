@@ -4,8 +4,8 @@
 #include "log.h"
 #include "global.h"
 
-size_t dh_createPacket(const dh_pkt **pktPtr, enum dh_msgType msgType, dh_pkt_TransactionId transId,
-                       const dh_optPayload *optPtrList[], uint optPtrListLength) {
+size_t dh_createPacket(const dh_pkt **pktPtr, const enum dh_msgType msgType, const dh_pkt_TransactionId transId,
+                       const dh_optPayload *optPtrList[], const uint optPtrListLength) {
     size_t length = sizeof(uint8_t) + sizeof(dh_pkt_TransactionId);
 
     // count packet length
@@ -34,9 +34,9 @@ size_t dh_createPacket(const dh_pkt **pktPtr, enum dh_msgType msgType, dh_pkt_Tr
     return length;
 }
 
-size_t dh_createSolicitPacket(const dh_pkt **pktPtr, const dh_opt_ClientIdentifier *clientId, size_t clientSize,
-                              uint16_t elapsedTime,
-                              uint32_t IA_Id) {
+size_t dh_createSolicitPacket(const dh_pkt **pktPtr, const dh_opt_ClientIdentifier *clientId, const size_t clientSize,
+                              const uint16_t elapsedTime,
+                              const uint32_t IA_Id) {
     return dh_CreateCustomizedSolicitPacket(
         pktPtr,
         dh_createCustomOptPayload(DHCPv6_OPTION_CLIENTID, (void *) clientId, clientSize),
@@ -45,9 +45,9 @@ size_t dh_createSolicitPacket(const dh_pkt **pktPtr, const dh_opt_ClientIdentifi
         0);
 }
 
-size_t dh_createRapidSolicitPacket(const dh_pkt **pktPtr, const dh_opt_ClientIdentifier *clientId, size_t clientSize,
-                                   uint16_t elapsedTime,
-                                   uint32_t IA_Id) {
+size_t dh_createRapidSolicitPacket(const dh_pkt **pktPtr, const dh_opt_ClientIdentifier *clientId, const size_t clientSize,
+                                   const uint16_t elapsedTime,
+                                   const uint32_t IA_Id) {
     dh_optPayload *rapidOption = dh_createOption_RapidCommit();
 
     return dh_CreateCustomizedSolicitPacket(
@@ -63,7 +63,7 @@ size_t dh_CreateCustomizedSolicitPacket(
     const dh_optPayload *clientId,
     const dh_optPayload *elapsedTime,
     const dh_optPayload *IA_PD,
-    uint optionsNum, ...) {
+    const uint optionsNum, ...) {
     const dh_optPayload **optionsPtrList = malloc(sizeof(dh_optPayload *) * (optionsNum + 3));
 
     if (clientId == NULL || elapsedTime == NULL || IA_PD == NULL) {

@@ -8,7 +8,7 @@
 #include <netinet/in.h>
 
 // optionDataLength without metadata
-dh_optPayload *dh_createCustomOptPayload(uint16_t optionCode, const void *optionData, size_t optionDataLength) {
+dh_optPayload *dh_createCustomOptPayload(const uint16_t optionCode, const void *optionData, const size_t optionDataLength) {
     size_t size = optionDataLength + dh_optPayload_offset;
 
     dh_optPayload *payload = (dh_optPayload *) malloc(size);
@@ -21,11 +21,11 @@ dh_optPayload *dh_createCustomOptPayload(uint16_t optionCode, const void *option
     return payload;
 }
 
-dh_optPayload *dh_createOptPayload(enum dh_options optionCode, const void *optionData, size_t optionDataLength) {
+dh_optPayload *dh_createOptPayload(const enum dh_options optionCode, const void *optionData, const size_t optionDataLength) {
     return dh_createCustomOptPayload(optionCode, optionData, optionDataLength);
 }
 
-dh_optPayload *dh_createOption_IA_PD(uint32_t id, const dh_optPayload prefixOptions[], size_t prefixOptionsLength) {
+dh_optPayload *dh_createOption_IA_PD(const uint32_t id, const dh_optPayload prefixOptions[], const size_t prefixOptionsLength) {
     dh_optPayload *payload = malloc(sizeof(dh_opt_IA_PD) + dh_optPayload_offset);
     dh_opt_IA_PD *thisOption = (dh_opt_IA_PD *) (payload->OptionData);
 
@@ -45,7 +45,7 @@ dh_optPayload *dh_createOption_IA_PD(uint32_t id, const dh_optPayload prefixOpti
 }
 
 dh_optPayload *
-dh_createOption_IAPrefix(uint32_t preferredTime, uint32_t validTime, uint8_t prefixLength, struct in6_addr prefix) {
+dh_createOption_IAPrefix(const uint32_t preferredTime, const uint32_t validTime, const uint8_t prefixLength, const struct in6_addr prefix) {
     uint optionLength = sizeof(dh_opt_IA_Prefix) - sizeof(uint8_t);
 
     dh_optPayload *payload = (dh_optPayload *) malloc(optionLength + dh_optPayload_offset);
@@ -66,7 +66,7 @@ dh_optPayload *dh_createOption_RapidCommit() {
     return dh_createOptPayload(DHCPv6_OPTION_RAPID_COMMIT, NULL, 0);
 }
 
-dh_optPayload *dh_createOption_ClientIdentifier_En(uint32_t enterpriseNumber, uint8_t id[], size_t idLength) {
+dh_optPayload *dh_createOption_ClientIdentifier_En(const uint32_t enterpriseNumber, uint8_t id[], const size_t idLength) {
     if (idLength <= 0)
         return NULL;
 
@@ -85,7 +85,7 @@ dh_optPayload *dh_createOption_ClientIdentifier_En(uint32_t enterpriseNumber, ui
 }
 
 // unit: 1/100 sec
-dh_optPayload *dh_createOption_ElapsedTime(uint16_t time) {
+dh_optPayload *dh_createOption_ElapsedTime(const uint16_t time) {
     dh_optPayload *payload = malloc(dh_optPayload_offset + sizeof(dh_opt_ElapsedTime));
     payload->OptionCode = DHCPv6_OPTION_ELAPSED_TIME;
     payload->OptionLength = sizeof(dh_opt_ElapsedTime);

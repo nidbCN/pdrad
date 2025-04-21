@@ -20,6 +20,7 @@ add_executable(pdrad
         Src/collection.c
         Src/ndp_packets.c
         Src/ndp_options.c
+        Src/utils.c
 )
 
 add_library(libpdrad
@@ -29,4 +30,6 @@ add_library(libpdrad
         Src/collection.c
         Src/ndp_packets.c
         Src/ndp_options.c
+        Inc/utils.h
+        Src/utils.c
 )

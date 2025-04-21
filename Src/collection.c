@@ -20,7 +20,7 @@ typedef struct _Utils_MixedList {
 const Utils_MixedList *_Utils_MixedListCreate() {
 }
 
-void **Utils_MixedListIndex(const Utils_MixedList *list, uint index) {
+void **Utils_MixedListIndex(const Utils_MixedList *list, const uint index) {
     if (list == NULL || index > list->count - 1)
         return NULL;
 
@@ -48,11 +48,11 @@ void **Utils_MixedListIndex(const Utils_MixedList *list, uint index) {
     return &(ptr->data[uintIndex]);
 }
 
-void *Utils_MixedListGet(const Utils_MixedList *list, uint index) {
+void *Utils_MixedListGet(const Utils_MixedList *list, const uint index) {
     return *(Utils_MixedListIndex(list, index));
 }
 
-void Utils_MixedListSet(const Utils_MixedList *list, uint index, void *ptr) {
+void Utils_MixedListSet(const Utils_MixedList *list, const uint index, void *ptr) {
     if (list == NULL) {
         return;
     }
