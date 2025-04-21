@@ -30,8 +30,9 @@ typedef struct _ndp_opt_PrefixInformation
 
 enum ndp_opt_PrefixInformationFlag
 {
-    L = 0x80,
-    A = 0x40,
+    ndp_opt_PrefixInformation_flag_L = 0b10000000,
+    ndp_opt_PrefixInformation_flag_A = 0b01000000,
+    ndp_opt_PrefixInformation_flag_R = 0b11000000,
 };
 
 typedef struct _ndp_opt_Mtu
@@ -54,7 +55,7 @@ typedef struct _ndp_opt_AdvertisementIntervalOption
     Using the conceptual router configuration variables defined by Neighbor Discovery [18], this field MUST be equal to the value MaxRtrAdvInterval, expressed in milliseconds.
     */
     uint32_t AdvertisementInterval;
-} __attribute__((packed)) dp_opt_AdvertisementIntervalOption;
+} __attribute__((packed)) ndp_opt_AdvertisementIntervalOption;
 
 typedef struct _ndp_opt_RouteInformationOption
 {

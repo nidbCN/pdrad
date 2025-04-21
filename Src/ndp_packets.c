@@ -4,14 +4,14 @@
 #include "ndp_options.h"
 
 ndp_ra *ndp_ra_createPacket(
-    struct in6_addr sourceAddr,
-    struct in6_addr destAddr,
-    uint8_t curHopLimit,
-    uint16_t routerLifeTime,
-    uint32_t reachableTime,
-    uint32_t reTransTimer,
+    const struct in6_addr sourceAddr,
+    const struct in6_addr destAddr,
+    const uint8_t curHopLimit,
+    const uint16_t routerLifeTime,
+    const uint32_t reachableTime,
+    const uint32_t reTransTimer,
     ndp_optPayload *optionsList[],
-    uint8_t optionsNum
+    const uint8_t optionsNum
 ) {
     size_t length = sizeof(ndp_ra);
 
@@ -26,7 +26,7 @@ ndp_ra *ndp_ra_createPacket(
 
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "Simplify"
-    pkt->Flags = (!M) | (!O) & (0xC0);
+    pkt->Flags = (!ndp_ra_flag_M) | (!ndp_ra_flag_O) & (0xC0);
 #pragma clang diagnostic pop
     pkt->RouterLifetime = htobe16(routerLifeTime);
     pkt->ReachableTime = htobe32(reachableTime);
@@ -54,7 +54,7 @@ struct ndp_pseudoHeader {
     uint8_t NextHeader;
 } __attribute__((packed));
 
-uint16_t ndp_checksumCalCore(const uint16_t *data, size_t size) {
+uint16_t ndp_checksumCalCore(const uint16_t *data, const size_t size) {
     int sum = 0;
     for (int i = 0; i < size / 2; ++i) {
         sum += data[i];
@@ -75,7 +75,7 @@ uint16_t ndp_checksumCalCore(const uint16_t *data, size_t size) {
     return sum;
 }
 
-uint16_t ndp_checksum(struct in6_addr sourceAddr, struct in6_addr destAddr, ndp_ra *restrict packet, size_t size) {
+uint16_t ndp_checksum(const struct in6_addr sourceAddr, const struct in6_addr destAddr, ndp_ra *restrict packet, const size_t size) {
     if (packet == NULL || size == 0)
         return 0;
 
