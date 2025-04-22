@@ -14,6 +14,18 @@
 #include "log.h"
 #include "ndp_packets.h"
 #include "utils.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netinet/ip6.h>
+#include <netinet/icmp6.h>
+#include <net/if.h>
+#include <arpa/inet.h>
+#include <linux/if_packet.h>
+#include <sys/ioctl.h>
 
 #define SERVER_PORT 547
 #define CLIENT_PORT 546
@@ -49,10 +61,37 @@ int sendAndReceivedDhcpPd();
 
 int sendRA(int fd, uint8_t hwAddr[6], struct in6_addr srcAddr, struct in6_addr dstAddr);
 
-void ReceiveRS(const int fd) {
+void ReceiveRS(const int fd, struct in6_addr srcAddr) {
     int mtu = 1500;
     void *recBuf = alloca(mtu);
-    ssize_t recLen = recvfrom(fd, recBuf, mtu, MSG_WAITALL, (struct sockaddr *) &client_addr, &addrLen);
+    size_t addrLen = sizeof(srcAddr);
+
+    while (true) {
+        ssize_t recLen = recvfrom(fd, recBuf, mtu, MSG_WAITALL, (struct sockaddr *) &srcAddr, (socklen_t *) &addrLen);
+
+
+        if (recLen < 14 + sizeof(struct ip6_hdr)) {
+            continue; // 忽略无效包
+        }
+        struct ip6_hdr *ip6 = (struct ip6_hdr *) (recBuf + 14);
+
+        struct in6_addr multCast = ADDR_All_Nodes_Multicast;
+        // 检查目标地址
+        if (memcmp(&ip6->ip6_dst, &multCast, sizeof(struct in6_addr)) < sizeof(struct in6_addr)) {
+            continue;
+        }
+
+        // 检查协议是否为 ICMPv6
+        if (ip6->ip6_nxt != IPPROTO_ICMPV6) {
+            continue;
+        }
+
+        // 解析 ICMPv6 头
+        struct icmp6_hdr *icmp6 = (struct icmp6_hdr *) (ip6 + 1);
+
+
+    }
+
 }
 
 int main() {
@@ -97,30 +136,30 @@ int main() {
 
 int sendRA(const int fd, uint8_t hwAddr[6], const struct in6_addr srcAddr, const struct in6_addr dstAddr) {
     struct in6_addr testPrefix = {
-        .__in6_u.__u6_addr32 = {0xfd320026, 0x0d000721, 0x00000000, 0x00000000}
+            .__in6_u.__u6_addr32 = {0xfd320026, 0x0d000721, 0x00000000, 0x00000000}
     };
     htobe_inet6(testPrefix);
 
     ndp_optPayload *prefixInfo = ndp_createOptionPrefixInformation(
-        64,
-        (ndp_opt_PrefixInformation_flag_L | !ndp_opt_PrefixInformation_flag_A) & ndp_opt_PrefixInformation_flag_R,
-        60,
-        30,
-        testPrefix);
+            64,
+            (ndp_opt_PrefixInformation_flag_L | !ndp_opt_PrefixInformation_flag_A) & ndp_opt_PrefixInformation_flag_R,
+            60,
+            30,
+            testPrefix);
 
     ndp_optPayload *mtu = ndp_createOptionMtu(1500);
     ndp_optPayload *linkAddress = ndp_createOptionSourceLinkLayerAddress(hwAddr);
     ndp_optPayload *options[3] = {prefixInfo, mtu, linkAddress};
 
     ndp_ra *raPacket = ndp_ra_createPacket(
-        srcAddr,
-        dstAddr,
-        64,
-        60,
-        0x00,
-        0x00,
-        options,
-        3);
+            srcAddr,
+            dstAddr,
+            64,
+            60,
+            0x00,
+            0x00,
+            options,
+            3);
 
     const int handler = fd;
 

@@ -1,27 +1,34 @@
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
 #include "ndp_packets.h"
 #include "ndp_options.h"
 
-ndp_ra *ndp_ra_createPacket(
-    const struct in6_addr sourceAddr,
-    const struct in6_addr destAddr,
-    const uint8_t curHopLimit,
-    const uint16_t routerLifeTime,
-    const uint32_t reachableTime,
-    const uint32_t reTransTimer,
-    ndp_optPayload *optionsList[],
-    const uint8_t optionsNum
-) {
+size_t ndp_createRAPacket(
+        ndp_ra **pktBufPtr,
+        const struct in6_addr sourceAddr,
+        const struct in6_addr destAddr,
+        const uint8_t curHopLimit,
+        const uint16_t routerLifeTime,
+        const uint32_t reachableTime,
+        const uint32_t reTransTimer,
+        uint optionsNum,
+        ...) {
+
     size_t length = sizeof(ndp_ra);
+    va_list vArg;
+    va_start(vArg, optionsNum);
+    const ndp_optPayload *optionsList[optionsNum];
 
     for (int i = 0; i < optionsNum; ++i) {
-        length += optionsList[i]->Length * 8;
+        const ndp_optPayload *opt = va_arg(vArg, const ndp_optPayload *);
+        optionsList[i] = opt;
+        length += opt->Length * 8;
     }
 
     ndp_ra *pkt = malloc(length);
     pkt->Type = 134;
-    pkt->Code =  0;
+    pkt->Code = 0;
     pkt->CurHopLimit = curHopLimit;
 
 #pragma clang diagnostic push
@@ -43,7 +50,8 @@ ndp_ra *ndp_ra_createPacket(
     int sum = ndp_checksum(sourceAddr, destAddr, pkt, length);
     pkt->CheckSum = sum;
 
-    return pkt;
+    *pktBufPtr = pkt;
+    return length;
 }
 
 struct ndp_pseudoHeader {
@@ -54,7 +62,18 @@ struct ndp_pseudoHeader {
     uint8_t NextHeader;
 } __attribute__((packed));
 
+struct { uint8_t exception; size_t result; } testFunc(){
+
+     return {
+             .exception = 0,
+             .result = 100,
+     };
+};
+
 uint16_t ndp_checksumCalCore(const uint16_t *data, const size_t size) {
+    if (size & 1)
+        return
+
     int sum = 0;
     for (int i = 0; i < size / 2; ++i) {
         sum += data[i];
@@ -75,18 +94,19 @@ uint16_t ndp_checksumCalCore(const uint16_t *data, const size_t size) {
     return sum;
 }
 
-uint16_t ndp_checksum(const struct in6_addr sourceAddr, const struct in6_addr destAddr, ndp_ra *restrict packet, const size_t size) {
+uint16_t ndp_checksum(const struct in6_addr sourceAddr, const struct in6_addr destAddr, ndp_ra *restrict packet,
+                      const size_t size) {
     if (packet == NULL || size == 0)
         return 0;
 
     packet->CheckSum = 0x00;
 
     struct ndp_pseudoHeader header = {
-        .SourceAddress = sourceAddr,
-        .DestinationAddress = destAddr,
-        .UpperLayerPacketLength = size,
-        .Zero = {0x00, 0x00, 0x00},
-        .NextHeader = IPPROTO_ICMPV6
+            .SourceAddress = sourceAddr,
+            .DestinationAddress = destAddr,
+            .UpperLayerPacketLength = size,
+            .Zero = {0x00, 0x00, 0x00},
+            .NextHeader = IPPROTO_ICMPV6
     };
 
     const uint16_t *headerPtr = (const uint16_t *) &header;
