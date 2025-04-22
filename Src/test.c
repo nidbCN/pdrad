@@ -47,20 +47,23 @@ void print_memory_hex(const void *mem, const size_t size) {
 
 int sendAndReceivedDhcpPd();
 
-int sendRA(int fd);
+int sendRA(int fd, uint8_t hwAddr[6], struct in6_addr srcAddr, struct in6_addr dstAddr);
 
 void ReceiveRS(const int fd) {
     int mtu = 1500;
     void *recBuf = alloca(mtu);
-    ssize_t recLen = recvfrom(fd, recBuf, mtu, 0, (struct sockaddr *) &client_addr, &addrLen);
+    ssize_t recLen = recvfrom(fd, recBuf, mtu, MSG_WAITALL, (struct sockaddr *) &client_addr, &addrLen);
 }
 
 int main() {
     // sendAndReceivedDhcpPd();
     const char *lanIfName = "enp4s0";
 
-    const int raHandler = socket(AF_INET6, SOCK_RAW, IPPROTO_ICMPV6);
-    if (raHandler < 0) {
+    utils_getLinkLocalAddressInit(lanIfName);
+
+    // ndp socket, IPv6 with next header ICMPv6 RAW SOCK
+    const int ndpHandler = socket(AF_INET6, SOCK_RAW, IPPROTO_ICMPV6);
+    if (ndpHandler < 0) {
         log_error("Socket creation failed.");
         log_error(strerror(errno));
         exit(EXIT_FAILURE);
@@ -68,17 +71,26 @@ int main() {
     struct ifreq *bindToLanDevReq = malloc(sizeof(struct ifreq));
     strcpy(bindToLanDevReq->ifr_name, lanIfName);
 
-    if (setsockopt(raHandler, SOL_SOCKET, SO_BINDTODEVICE, (char *) bindToLanDevReq, sizeof(struct ifreq)) < 0) {
+    if (setsockopt(ndpHandler, SOL_SOCKET, SO_BINDTODEVICE, (char *) bindToLanDevReq, sizeof(struct ifreq)) < 0) {
         log_error("Bind to interface %s failed", bindToLanDevReq->ifr_name);
         log_error(strerror(errno));
-        close(raHandler);
+        close(ndpHandler);
         free(bindToLanDevReq);
         return 1;
     }
 
-    sendRA(raHandler);
+    struct in6_addr srcAddr = {0};
+    utils_getLinkLocalAddress(&srcAddr);
 
-    close(raHandler);
+    struct in6_addr dstAddr = ADDR_All_Nodes_Multicast;
+    htobe_inet6(dstAddr);
+
+    uint8_t lanIfHwAddr[6] = {0};
+    utils_getHardwareAddressByName(lanIfName, lanIfHwAddr);
+    sendRA(ndpHandler, lanIfHwAddr, srcAddr, dstAddr);
+
+    close(ndpHandler);
+    utils_getLinkLocalAddressDispose();
 
     return 0;
 }
@@ -87,7 +99,6 @@ int sendRA(const int fd, uint8_t hwAddr[6], const struct in6_addr srcAddr, const
     struct in6_addr testPrefix = {
         .__in6_u.__u6_addr32 = {0xfd320026, 0x0d000721, 0x00000000, 0x00000000}
     };
-
     htobe_inet6(testPrefix);
 
     ndp_optPayload *prefixInfo = ndp_createOptionPrefixInformation(
