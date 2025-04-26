@@ -24,7 +24,6 @@
 #include <netinet/icmp6.h>
 #include <net/if.h>
 #include <arpa/inet.h>
-#include <linux/if_packet.h>
 #include <sys/ioctl.h>
 
 #define SERVER_PORT 547
@@ -149,21 +148,23 @@ int sendRA(const int fd, uint8_t hwAddr[6], const struct in6_addr srcAddr, const
 
     ndp_optPayload *mtu = ndp_createOptionMtu(1500);
     ndp_optPayload *linkAddress = ndp_createOptionSourceLinkLayerAddress(hwAddr);
-    ndp_optPayload *options[3] = {prefixInfo, mtu, linkAddress};
 
-    ndp_ra *raPacket = ndp_ra_createPacket(
+    struct nd_router_advert *raPacket = NULL;
+
+    size_t pktSize = ndp_createRAPacket(
+            &raPacket,
             srcAddr,
             dstAddr,
             64,
             60,
             0x00,
             0x00,
-            options,
-            3);
+            3,
+            prefixInfo, mtu, linkAddress);
 
     const int handler = fd;
 
-    sendto(handler, raPacket, sizeof(ndp_ra) + prefixInfo->Length * 8,
+    sendto(handler, raPacket, pktSize,
            0, (struct sockaddr *) &dstAddr,
            sizeof(dstAddr));
 
@@ -248,9 +249,11 @@ int sendAndReceivedDhcpPd() {
 
     // request in use
 
-    struct sockaddr_in6 server_addr;
-    struct sockaddr_in6 client_addr;
-    memset(&client_addr, 0, sizeof(client_addr));
+    struct in6_addr serverAddr = ADDR_All_DHCP_Relay_Agents_and_Servers;
+
+    struct sockaddr_in6 server_addr = {0x00};
+    struct sockaddr_in6 client_addr = {0x00};
+
     client_addr.sin6_family = AF_INET6;
     client_addr.sin6_port = htons(CLIENT_PORT);
     client_addr.sin6_addr = in6addr_any;
@@ -262,10 +265,9 @@ int sendAndReceivedDhcpPd() {
         return 1;
     }
 
-    memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin6_family = AF_INET6;
     server_addr.sin6_port = htons(SERVER_PORT);
-    inet_pton(AF_INET6, SERVER_ADDR, &server_addr.sin6_addr);
+    server_addr.sin6_addr = serverAddr;
 
     if (sendto(handler, pktPtr, pktLength, 0,
                (struct sockaddr *) &server_addr, sizeof(server_addr)) < 0) {

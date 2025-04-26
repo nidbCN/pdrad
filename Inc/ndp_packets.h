@@ -2,24 +2,10 @@
 #define PDRAD_NDP_PACKETS_H
 
 #include <netinet/in.h>
+#include <netinet/icmp6.h>
 #include "ndp_options.h"
 
-typedef struct _ndp_ra {
-    uint8_t Type;
-    uint8_t Code;
-    uint16_t CheckSum;
-    uint8_t CurHopLimit;
-    uint8_t Flags;
-    uint16_t RouterLifetime;
-    uint32_t ReachableTime;
-    uint32_t ReTransTimer;
-    ndp_optPayload Options[];
-} __attribute__((packed)) ndp_ra;
-
 typedef struct _ndp_rs {
-    uint8_t Type;
-    uint8_t Code;
-    uint16_t CheckSum;
     uint32_t Reserved;
     ndp_optPayload Options[];
 } ndp_rs;
@@ -77,17 +63,22 @@ enum ndp_ra_flag {
 // @formatter:on
 // clang-format on
 
-uint16_t ndp_checksum(struct in6_addr sourceAddr, struct in6_addr destAddr, ndp_ra *restrict packet, size_t size);
+int ndp_checksum(
+        uint16_t *buf,
+        struct in6_addr sourceAddr,
+        struct in6_addr destAddr,
+        struct nd_router_advert *restrict packet,
+        size_t size);
 
-ndp_ra *ndp_ra_createPacket(
-    struct in6_addr sourceAddr,
-    struct in6_addr destAddr,
-    uint8_t curHopLimit,
-    uint16_t routerLifeTime,
-    uint32_t reachableTime,
-    uint32_t reTransTimer,
-    ndp_optPayload *optionsList[],
-    uint8_t optionsNum
-);
+size_t ndp_createRAPacket(
+        struct nd_router_advert **pktBufPtr,
+        struct in6_addr sourceAddr,
+        struct in6_addr destAddr,
+        uint8_t curHopLimit,
+        uint16_t routerLifeTime,
+        uint32_t reachableTime,
+        uint32_t reTransTimer,
+        uint optionsNum,
+        ...);
 
 #endif // PDRAD_NDP_PACKETS_H

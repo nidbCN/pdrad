@@ -72,7 +72,7 @@ ndp_optPayload *ndp_createOptionMtu(const uint32_t mtu)
 ndp_optPayload *ndp_createOptionAdvertisementIntervalOption(const uint32_t interval)
 {
     ndp_optPayload *option = malloc(NDP_OPT_ADVERTISEMENT_INTERVAL_PROP_LEN * 8);
-    ndp_opt_AdvertisementIntervalOption* subOption = option->OptionData;
+    ndp_opt_AdvertisementIntervalOption* subOption = (ndp_opt_AdvertisementIntervalOption *)option->OptionData;
     subOption->AdvertisementInterval = htobe32(interval);
     return option;
 }
@@ -96,7 +96,7 @@ ndp_optPayload *ndp_createOptionRouteInformation(const uint8_t prefixLength, uin
     option->Type = 24;
     option->Length = propLen;
 
-    ndp_opt_RouteInformation *subOption = option->OptionData;
+    ndp_opt_RouteInformation *subOption = (ndp_opt_RouteInformation *)option->OptionData;
 
     subOption->PrefixLength = prefixLength;
     subOption->RoutePreference = 0b00001000;

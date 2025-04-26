@@ -1,6 +1,7 @@
 #ifndef UTILS_H
 #define UTILS_H
 #include <stdint.h>
+#include <netinet/in.h>
 
 /*
  * interface: name of interface

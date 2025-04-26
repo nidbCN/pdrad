@@ -1,11 +1,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
+#include <netinet/icmp6.h>
 #include "ndp_packets.h"
 #include "ndp_options.h"
 
 size_t ndp_createRAPacket(
-        ndp_ra **pktBufPtr,
+        struct nd_router_advert **pktBufPtr,
         const struct in6_addr sourceAddr,
         const struct in6_addr destAddr,
         const uint8_t curHopLimit,
@@ -15,7 +16,7 @@ size_t ndp_createRAPacket(
         uint optionsNum,
         ...) {
 
-    size_t length = sizeof(ndp_ra);
+    size_t length = sizeof(struct nd_router_advert);
     va_list vArg;
     va_start(vArg, optionsNum);
     const ndp_optPayload *optionsList[optionsNum];
@@ -26,20 +27,21 @@ size_t ndp_createRAPacket(
         length += opt->Length * 8;
     }
 
-    ndp_ra *pkt = malloc(length);
-    pkt->Type = 134;
-    pkt->Code = 0;
-    pkt->CurHopLimit = curHopLimit;
+    struct nd_router_advert *pkt = malloc(length);
+    pkt->nd_ra_hdr.icmp6_type = ND_ROUTER_ADVERT;
+    pkt->nd_ra_hdr.icmp6_code = 0;
+    pkt->nd_ra_hdr.icmp6_dataun.icmp6_un_data8[0] = curHopLimit;    // Cur Hop Limit
 
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "Simplify"
-    pkt->Flags = (!ndp_ra_flag_M) | (!ndp_ra_flag_O) & (0xC0);
+    pkt->nd_ra_hdr.icmp6_dataun.icmp6_un_data8[1] =
+            (!ndp_ra_flag_M) | (!ndp_ra_flag_O) | ndp_ra_flag_Prf_Medium & (ndp_ra_flag_R);
 #pragma clang diagnostic pop
-    pkt->RouterLifetime = htobe16(routerLifeTime);
-    pkt->ReachableTime = htobe32(reachableTime);
-    pkt->ReTransTimer = htobe32(reTransTimer);
+    pkt->nd_ra_hdr.icmp6_dataun.icmp6_un_data16[1] = htobe16(routerLifeTime);
+    pkt->nd_ra_reachable = htobe32(reachableTime);
+    pkt->nd_ra_retransmit = htobe32(reTransTimer);
 
-    ndp_optPayload *options = pkt->Options;
+    ndp_optPayload *options = (ndp_optPayload *) pkt + 1;
     for (int i = 0; i < optionsNum; ++i) {
         uint optionLength = optionsList[i]->Length * 8;
         memcpy(options, optionsList[i], optionLength);
@@ -47,9 +49,9 @@ size_t ndp_createRAPacket(
     }
 
     // checksum
-    int sum = ndp_checksum(sourceAddr, destAddr, pkt, length);
-    pkt->CheckSum = sum;
-
+    if (ndp_checksum(&pkt->nd_ra_hdr.icmp6_cksum, sourceAddr, destAddr, pkt, length) < 0) {
+        // error
+    }
     *pktBufPtr = pkt;
     return length;
 }
@@ -62,17 +64,9 @@ struct ndp_pseudoHeader {
     uint8_t NextHeader;
 } __attribute__((packed));
 
-struct { uint8_t exception; size_t result; } testFunc(){
-
-     return {
-             .exception = 0,
-             .result = 100,
-     };
-};
-
-uint16_t ndp_checksumCalCore(const uint16_t *data, const size_t size) {
+int ndp_checksumCalCore(int *buf, const uint16_t *data, const size_t size) {
     if (size & 1)
-        return
+        return -1;
 
     int sum = 0;
     for (int i = 0; i < size / 2; ++i) {
@@ -83,23 +77,19 @@ uint16_t ndp_checksumCalCore(const uint16_t *data, const size_t size) {
         }
     }
 
-    if (size & 1) {
-        uint16_t final_byte = ((const uint8_t *) data)[size - 1] << 8;
-        sum += final_byte;
-        if (sum & 0xFFFF0000) {
-            sum = (sum & 0xFFFF) + (sum >> 16);
-        }
-    }
-
-    return sum;
+    *buf = sum;
+    return 0;
 }
 
-uint16_t ndp_checksum(const struct in6_addr sourceAddr, const struct in6_addr destAddr, ndp_ra *restrict packet,
-                      const size_t size) {
+int ndp_checksum(
+        uint16_t *buf,
+        const struct in6_addr sourceAddr, const struct in6_addr destAddr,
+        struct nd_router_advert *restrict packet,
+        const size_t size) {
     if (packet == NULL || size == 0)
-        return 0;
+        return -1;
 
-    packet->CheckSum = 0x00;
+    packet->nd_ra_hdr.icmp6_cksum = 0x00;
 
     struct ndp_pseudoHeader header = {
             .SourceAddress = sourceAddr,
@@ -110,8 +100,16 @@ uint16_t ndp_checksum(const struct in6_addr sourceAddr, const struct in6_addr de
     };
 
     const uint16_t *headerPtr = (const uint16_t *) &header;
-    int sum = ndp_checksumCalCore(headerPtr, sizeof(header)) +
-              ndp_checksumCalCore((const uint16_t *) packet, size);
 
-    return ~sum & 0xFFFF;
+    int sumHeader = 0;
+    int sumBody = 0;
+
+    if (ndp_checksumCalCore(&sumHeader, headerPtr, sizeof(header)) < 0) {
+        // error
+    }
+    if (ndp_checksumCalCore(&sumBody, (const uint16_t *) packet, size) < 0) {
+        // error
+    }
+
+    return ~(sumHeader + sumBody) & 0xFFFF;
 }
