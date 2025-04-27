@@ -26,6 +26,11 @@
 .__in6_u.__u6_addr32 = {0xff020000, 0x00000000, 0x00000000, 0x00000001} \
 }
 
+#define ADDR_All_Routers_Multicast \
+{ \
+.__in6_u.__u6_addr32 = {0xff020000, 0x00000000, 0x00000000, 0x00000002} \
+}
+
 #define ADDR_All_DHCP_Relay_Agents_and_Servers \
 { \
 .__in6_u.__u6_addr32 = {0xff020000, 0x00000000, 0x00000001, 0x00000002} \

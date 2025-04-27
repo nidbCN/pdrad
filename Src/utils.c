@@ -8,47 +8,40 @@
 #include "global.h"
 #include "log.h"
 
-int utils_getHardwareAddressByName(const char *interfaceName, uint8_t hwAddress[6]) {
-#define MAC_ADDRESS_LENGTH 6
-    struct ifreq request = {0x00};
-    strcpy(request.ifr_name, interfaceName);
+int utils_handler = -1;
+struct ifreq *utils_request = NULL;
 
-    const int handler = socket(AF_UNIX, SOCK_DGRAM, 0x00);
+int utils_getHardwareAddressByName(uint8_t hwAddress[MAC_ADDRESS_LENGTH]) {
+    utils_request->ifr_ifru.ifru_ivalue = 0;
 
-    if (handler < 0) {
-        log_fatal("Can not create socket.(%d: %s)", errno, strerror(errno));
-        return errno;
-    }
-
-    if (ioctl(handler, SIOCGIFHWADDR, &request) < 0) {
+    if (ioctl(utils_handler, SIOCGIFHWADDR, utils_request) < 0) {
         log_error("Cannot get address of interface via ioctl.(%d: %s)", errno, strerror(errno));
         return errno;
     }
 
-    memcpy(hwAddress, request.ifr_hwaddr.sa_data, sizeof(uint8_t) * MAC_ADDRESS_LENGTH);
+    memcpy(hwAddress, utils_request->ifr_hwaddr.sa_data, sizeof(uint8_t) * MAC_ADDRESS_LENGTH);
 
     return 0;
 }
 
-int utils_getLinkLocalAddress_Handler = -1;
-
-int utils_getLinkLocalAddressInit(const char *interfaceName) {
-    if (utils_getLinkLocalAddress_Handler != -1) {
+int utils_Init(const char *interfaceName) {
+    if (utils_handler != -1 || utils_request != NULL) {
         return EINVAL;
     }
 
-    utils_getLinkLocalAddress_Handler = socket(AF_INET6, SOCK_DGRAM, 0);
+    utils_handler = socket(AF_INET6, SOCK_DGRAM, 0);
 
     // create ioctl request to bind to interface
-    struct ifreq *request = malloc(sizeof(struct ifreq));
-    strcpy(request->ifr_name, interfaceName);
-    if (setsockopt(utils_getLinkLocalAddress_Handler, SOL_SOCKET, SO_BINDTODEVICE, (char *) request,
+    utils_request = malloc(sizeof(struct ifreq));
+    strcpy(utils_request->ifr_name, interfaceName);
+    if (setsockopt(utils_handler, SOL_SOCKET, SO_BINDTODEVICE, utils_request,
                    sizeof(struct ifreq)) < 0) {
         log_error("Bind interface failed: %s.", strerror(errno));
-        close(utils_getLinkLocalAddress_Handler);
-        free(request);
+        close(utils_handler);
+        free(utils_request);
         return errno;
     }
+
     return 0;
 }
 
@@ -63,22 +56,23 @@ int utils_getLinkLocalAddress(struct in6_addr *address) {
     destAddr.sin6_port = htobe16(0);
 
     // create connection
-    if (connect(utils_getLinkLocalAddress_Handler, (struct sockaddr *) &destAddr, sizeof(destAddr)) < 0) {
+    if (connect(utils_handler, (struct sockaddr *) &destAddr, sizeof(destAddr)) < 0) {
         log_error("Create connection to link-local failed: %s.", strerror(errno));
-        close(utils_getLinkLocalAddress_Handler);
+        close(utils_handler);
         return errno;
     }
 
     // get socket connection info
     socklen_t addrLen = sizeof(struct sockaddr_in6);
-    if (getsockname(utils_getLinkLocalAddress_Handler, (struct sockaddr *) address, &addrLen) < 0) {
+    if (getsockname(utils_handler, (struct sockaddr *) address, &addrLen) < 0) {
         log_error("Invoke `getsockname` failed: %s.", strerror(errno));
-        close(utils_getLinkLocalAddress_Handler);
+        close(utils_handler);
     }
 
     return 0;
 }
 
-inline int utils_getLinkLocalAddressDispose() {
-    return close(utils_getLinkLocalAddress_Handler);
+inline int utils_Dispose() {
+    log_warn("Close ioctl handler :%d.", utils_handler);
+    return close(utils_handler);
 }

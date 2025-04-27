@@ -29,28 +29,12 @@ bool Thread_listenRouterSolicit_cancel = false;
 bool _prefixLock = false;
 dh_opt_IA_Prefix _prefix = {0x00};
 
-void handle(int sig) {
+void handle(int _) {
     Thread_sendRouterAdv_cancel = true;
     Thread_listenRouterSolicit_cancel = true;
     Thread_requestDhcpPrefix_cancel = true;
 
-    utils_getLinkLocalAddressDispose();
-}
-
-void print_binary(const uint8_t byte) {
-    for (int i = 7; i >= 0; i--) {
-        printf("%d", (byte >> i) & 1);
-    }
-}
-
-void print_memory_little_endian(void *ptr, const size_t size) {
-    const uint8_t *bytes = (uint8_t *) ptr;
-    printf("Little Endian: ");
-    for (size_t i = 0; i < size; i++) {
-        print_binary(bytes[i]);
-        printf(" ");
-    }
-    printf("\n");
+    utils_Dispose();
 }
 
 void print_memory_hex(const void *mem, const size_t size) {
@@ -68,11 +52,15 @@ int requestAndReceiveDhcp(int handler, void *buffer, size_t bufferLength,
                           struct in6_addr clientAddr,
                           dh_opt_IA_Prefix *prefixResultPtr);
 
-struct in6_addr ReceiveSrcAddrFromRouterSolicit(int handler, struct in6_addr linkLocalAddr);
+struct in6_addr ReceiveSrcAddrFromRouterSolicit(int handler);
 
 int sendRouterAdv(int handler, uint8_t macAddr[6], struct in6_addr linkLocalAddr, struct in6_addr dstAddr,
                   struct in6_addr prefix, uint prefixLength, uint validTime, uint preferTime);
 
+/*
+ * RA Thread arguments
+ *
+ */
 struct Thread_sendRouterAdv_Arg {
     const char *interfaceName;
     int intervalSec;
@@ -107,7 +95,7 @@ void *Thread_sendRouterAdv(struct Thread_sendRouterAdv_Arg *arg) {
         utils_getLinkLocalAddress(&srcAddr);
 
         uint8_t lanIfHwAddr[6] = {0};
-        utils_getHardwareAddressByName(arg->interfaceName, lanIfHwAddr);
+        utils_getHardwareAddressByName(lanIfHwAddr);
 
         while (_prefixLock);
         _prefixLock = true;
@@ -132,7 +120,7 @@ void *Thread_sendRouterAdv(struct Thread_sendRouterAdv_Arg *arg) {
 }
 
 void *Thread_requestDhcpPrefix(const char *wanIfName) {
-    // init a udp socket
+    // init a udp(DHCPv6) socket
     int handler = socket(AF_INET6, SOCK_DGRAM, 0);
     if (handler < 0) {
         log_error("Socket creation failed.");
@@ -143,7 +131,9 @@ void *Thread_requestDhcpPrefix(const char *wanIfName) {
     // ioctl req
     struct ifreq *request = malloc(sizeof(struct ifreq));
     strcpy(request->ifr_name, wanIfName);
-    if (setsockopt(handler, IPPROTO_UDP, IPV6_MULTICAST_IF, (char *) request, sizeof(struct ifreq)) < 0) {
+
+    // bind to multicast
+    if (setsockopt(handler, IPPROTO_UDP, IPV6_MULTICAST_IF, request, sizeof(struct ifreq)) < 0) {
         log_error("Bind interface failed");
         log_error(strerror(errno));
         close(handler);
@@ -156,7 +146,7 @@ void *Thread_requestDhcpPrefix(const char *wanIfName) {
     client_addr.sin6_port = htons(CLIENT_PORT);
     client_addr.sin6_addr = in6addr_any;
 
-    // bind interface
+    // bind address
     if (bind(handler, (struct sockaddr *) &client_addr, sizeof(client_addr)) < 0) {
         log_error("Bind failed");
         log_error(strerror(errno));
@@ -206,33 +196,72 @@ void Thread_listenRouterSolicit(const char *lanIfName) {
     log_info("RS thread start, bind interface {%s}", lanIfName);
 
     // ndp socket, IPv6 with next header ICMPv6 RAW SOCK
-    const int ndpHandler = socket(AF_INET6, SOCK_RAW, IPPROTO_ICMPV6);
-    if (ndpHandler < 0) {
-        log_error("Socket creation failed.");
-        log_error(strerror(errno));
+    const int ndpMulticastHandler = socket(AF_INET6, SOCK_RAW, IPPROTO_ICMPV6);
+    if (ndpMulticastHandler < 0) {
+        log_error("Socket creation failed: %s.", strerror(errno));
         exit(EXIT_FAILURE);
     }
-    struct ifreq *bindToLanDevReq = malloc(sizeof(struct ifreq));
-    strcpy(bindToLanDevReq->ifr_name, lanIfName);
 
-    if (setsockopt(ndpHandler, SOL_SOCKET, SO_BINDTODEVICE, (char *) bindToLanDevReq, sizeof(struct ifreq)) < 0) {
-        log_error("Bind to interface %s failed", bindToLanDevReq->ifr_name);
-        log_error(strerror(errno));
-        close(ndpHandler);
-        free(bindToLanDevReq);
+    // ndp socket, IPv6 with next header ICMPv6 RAW SOCK
+    const int ndpHandler = socket(AF_INET6, SOCK_RAW, IPPROTO_ICMPV6);
+    if (ndpHandler < 0) {
+        log_error("Socket creation failed: %s.", strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    struct ifreq bindToLanDevReq = {0x00};
+    strcpy(bindToLanDevReq.ifr_ifrn.ifrn_name, lanIfName);
+
+    // bind interface
+    if (setsockopt(ndpMulticastHandler, SOL_SOCKET, SO_BINDTODEVICE,
+                   &bindToLanDevReq, sizeof(struct ifreq)) < 0) {
+        log_error("Bind multicast socket to interface %s failed: %s.", bindToLanDevReq.ifr_ifrn.ifrn_name,
+                  strerror(errno));
+        close(ndpMulticastHandler);
         return;
+    }
+
+    // bind interface
+    if (setsockopt(ndpHandler, SOL_SOCKET, SO_BINDTODEVICE,
+                   (char *) &bindToLanDevReq, sizeof(struct ifreq)) < 0) {
+        log_error("Bind socket to interface %s failed: %s.", bindToLanDevReq.ifr_ifrn.ifrn_name, strerror(errno));
+        close(ndpHandler);
+        return;
+    }
+
+    struct ipv6_mreq multicastReq = {0x00};
+    struct in6_addr multicastAddr = ADDR_All_Routers_Multicast;
+    htobe_inet6(multicastAddr);
+    multicastReq.ipv6mr_multiaddr = multicastAddr;
+    multicastReq.ipv6mr_interface = if_nametoindex(lanIfName);
+
+    // join multicast
+    if (setsockopt(ndpMulticastHandler, IPPROTO_IPV6, IPV6_ADD_MEMBERSHIP,
+                   &multicastReq, sizeof(struct ipv6_mreq)) < 0) {
+        log_error("Join multicast failed: %s.", strerror(errno));
+
+        close(ndpMulticastHandler);
+        return;
+    }
+
+    struct sockaddr_in6 bindTo = {0x00};
+    bindTo.sin6_addr = in6addr_any;
+    bindTo.sin6_family = AF_INET6;
+
+    if (bind(ndpMulticastHandler, (const struct sockaddr *) &bindTo, sizeof(bindTo)) < 0) {
+        log_error("Bind to any failed: %s.", strerror(errno));
     }
 
     while (!Thread_listenRouterSolicit_cancel) {
         struct in6_addr linkLocalAddr = {0};
         utils_getLinkLocalAddress(&linkLocalAddr);
 
-        struct in6_addr clientAddr = ReceiveSrcAddrFromRouterSolicit(ndpHandler, linkLocalAddr);
+        struct in6_addr clientAddr = ReceiveSrcAddrFromRouterSolicit(ndpMulticastHandler);
 
         log_info("Success parse client address from RS, reply a RA.");
 
         uint8_t lanIfHwAddr[6] = {0};
-        utils_getHardwareAddressByName(lanIfName, lanIfHwAddr);
+        utils_getHardwareAddressByName(lanIfHwAddr);
 
         _prefixLock = true;
 
@@ -241,7 +270,7 @@ void Thread_listenRouterSolicit(const char *lanIfName) {
 
         log_info("Send a RA.");
 
-        sendRouterAdv(ndpHandler, lanIfHwAddr, linkLocalAddr, clientAddr,
+        sendRouterAdv(ndpMulticastHandler, lanIfHwAddr, linkLocalAddr, clientAddr,
                       prefix,
                       _prefix.PrefixLength,
                       _prefix.ValidLifetime,
@@ -251,6 +280,7 @@ void Thread_listenRouterSolicit(const char *lanIfName) {
         _prefixLock = false;
     }
 
+    close(ndpMulticastHandler);
     close(ndpHandler);
 }
 
@@ -276,6 +306,8 @@ int main(int argc, char *argv[]) {
         } else if (*argv[1] == 's') {
             struct in6_addr staticPrefix = {0x00};
             inet_pton(AF_INET6, argv[3], &staticPrefix);
+            ((uint64_t *) &staticPrefix)[0] = htobe64(((uint64_t *) &staticPrefix)[0]);
+
             memcpy(_prefix.Prefix, &staticPrefix, sizeof(staticPrefix));
 
             _prefix.PreferredLifetime = 3600;
@@ -302,7 +334,7 @@ int main(int argc, char *argv[]) {
 
     const char *lanIfName = argv[2];
 
-    utils_getLinkLocalAddressInit(lanIfName);
+    utils_Init(lanIfName);
 
     // REG SIG
     log_info("Register signal handler for SIGINT");
@@ -335,12 +367,9 @@ int main(int argc, char *argv[]) {
     pthread_create(&thread_ra, NULL, (void *(*)(void *)) Thread_sendRouterAdv, (void *) &sendRouterAdvArg);
     pthread_create(&thread_rs, NULL, (void *(*)(void *)) Thread_listenRouterSolicit, (void *) lanIfName);
 
-    utils_getLinkLocalAddressDispose();
-
     while (true) {
         sleep(60);
     }
-
 }
 
 int sendRouterAdv(const int handler, uint8_t macAddr[6], struct in6_addr linkLocalAddr, struct in6_addr dstAddr,
@@ -391,36 +420,21 @@ int sendRouterAdv(const int handler, uint8_t macAddr[6], struct in6_addr linkLoc
     return 0;
 }
 
-struct in6_addr ReceiveSrcAddrFromRouterSolicit(const int handler, struct in6_addr linkLocalAddr) {
+struct in6_addr ReceiveSrcAddrFromRouterSolicit(const int handler) {
     int mtu = 1500;
     void *recBuf = alloca(mtu);
 
-    size_t addrLen = sizeof(linkLocalAddr);
+    struct sockaddr_in6 addr = {0x00};
+    int addrLen = sizeof(struct sockaddr_in6);
 
     while (true) {
-        ssize_t recLen = recvfrom(handler, recBuf, mtu, MSG_WAITFORONE, (struct sockaddr *) &linkLocalAddr,
+        ssize_t recLen = recvfrom(handler, recBuf, mtu, MSG_WAITFORONE, (struct sockaddr *) &addr,
                                   (socklen_t *) &addrLen);
 
         log_info("RS socket received %ld bytes.", recLen);
 
-        if (recLen < 14 + sizeof(struct ip6_hdr)) {
-            continue; // 忽略无效包
-        }
-        struct ip6_hdr *ip6 = (struct ip6_hdr *) (recBuf + 14);
-
-        struct in6_addr multCast = ADDR_All_Nodes_Multicast;
-        // 检查目标地址
-        if (memcmp(&ip6->ip6_dst, &multCast, sizeof(struct in6_addr)) < sizeof(struct in6_addr)) {
-            continue;
-        }
-
-        // 检查协议是否为 ICMPv6
-        if (ip6->ip6_nxt != IPPROTO_ICMPV6) {
-            continue;
-        }
-
         // 解析 ICMPv6 头
-        struct nd_router_solicit *rs = (struct nd_router_solicit *) (ip6 + 1);
+        struct nd_router_solicit *rs = (struct nd_router_solicit *) (recBuf);
         if (rs->nd_rs_hdr.icmp6_type != 133)
             continue;
         if (rs->nd_rs_hdr.icmp6_code != 0)
@@ -430,7 +444,7 @@ struct in6_addr ReceiveSrcAddrFromRouterSolicit(const int handler, struct in6_ad
 
         log_info("Received a RS.");
 
-        return ip6->ip6_src;
+        return addr.sin6_addr;
     }
 }
 
