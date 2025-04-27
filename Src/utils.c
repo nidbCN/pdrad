@@ -10,7 +10,7 @@
 
 int utils_getHardwareAddressByName(const char *interfaceName, uint8_t hwAddress[6]) {
 #define MAC_ADDRESS_LENGTH 6
-    struct ifreq request = {0};
+    struct ifreq request = {0x00};
     strcpy(request.ifr_name, interfaceName);
 
     const int handler = socket(AF_UNIX, SOCK_DGRAM, 0x00);
@@ -20,7 +20,7 @@ int utils_getHardwareAddressByName(const char *interfaceName, uint8_t hwAddress[
         return errno;
     }
 
-    if (ioctl(handler, SIOCGIFHWADDR, request) < 0) {
+    if (ioctl(handler, SIOCGIFHWADDR, &request) < 0) {
         log_error("Cannot get address of interface via ioctl.(%d: %s)", errno, strerror(errno));
         return errno;
     }
@@ -48,7 +48,7 @@ int utils_getLinkLocalAddressInit(const char *interfaceName) {
         close(utils_getLinkLocalAddress_Handler);
         free(request);
         return errno;
-                   }
+    }
     return 0;
 }
 
