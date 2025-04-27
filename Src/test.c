@@ -16,7 +16,6 @@
 #include "utils.h"
 #include <netinet/ip6.h>
 #include <netinet/icmp6.h>
-#include <bits/signum-generic.h>
 #include <signal.h>
 #include <pthread.h>
 
@@ -227,11 +226,29 @@ void Thread_listenRouterSolicit(const char *lanIfName) {
     while (!Thread_listenRouterSolicit_cancel) {
         struct in6_addr linkLocalAddr = {0};
         utils_getLinkLocalAddress(&linkLocalAddr);
+
         struct in6_addr clientAddr = ReceiveSrcAddrFromRouterSolicit(ndpHandler, linkLocalAddr);
+
+        log_info("Success parse client address from RS, reply a RA.");
 
         uint8_t lanIfHwAddr[6] = {0};
         utils_getHardwareAddressByName(lanIfName, lanIfHwAddr);
-        sendRouterAdv(ndpHandler, lanIfHwAddr, linkLocalAddr, clientAddr);
+
+        _prefixLock = true;
+
+        struct in6_addr prefix = {0x00};
+        memcpy(&prefix, _prefix.Prefix, sizeof(struct in6_addr));
+
+        log_info("Send a RA.");
+
+        sendRouterAdv(ndpHandler, lanIfHwAddr, linkLocalAddr, clientAddr,
+                      prefix,
+                      _prefix.PrefixLength,
+                      _prefix.ValidLifetime,
+                      _prefix.PreferredLifetime
+        );
+
+        _prefixLock = false;
     }
 
     close(ndpHandler);
@@ -239,16 +256,24 @@ void Thread_listenRouterSolicit(const char *lanIfName) {
 
 int main(int argc, char *argv[]) {
     bool useDhcp = false;
-    const char *lanIfName = argv[2];
     const char *wanIfName = NULL;
+
+    if (argc <= 1) {
+        log_error("Invalid argument.\n"
+                  "Usage: \n"
+                  "\t%s d <lan interface name> <wan interface name>\n"
+                  "\t%s s <lan interface name> <prefix> <prefix length>",
+                  argv[0], argv[0]
+        );
+
+        return -1;
+    }
 
     if (argc >= 3 || (*argv[1] != 'd' && *argv[2] != 's')) {
         if (*argv[1] == 'd') {
             useDhcp = true;
-
             wanIfName = argv[3];
         } else if (*argv[1] == 's') {
-
             struct in6_addr staticPrefix = {0x00};
             inet_pton(AF_INET6, argv[3], &staticPrefix);
             memcpy(_prefix.Prefix, &staticPrefix, sizeof(staticPrefix));
@@ -262,6 +287,8 @@ int main(int argc, char *argv[]) {
                       "\t%s s <lan interface name> <prefix> <prefix length>",
                       argv[0], argv[0]
             );
+
+            return -1;
         }
     } else {
         log_error("Usage: \n"
@@ -269,8 +296,11 @@ int main(int argc, char *argv[]) {
                   "\t%s s <lan interface name> <prefix> <prefix length>",
                   argv[0], argv[0]
         );
+
+        return -1;
     }
 
+    const char *lanIfName = argv[2];
 
     utils_getLinkLocalAddressInit(lanIfName);
 
@@ -286,28 +316,36 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
-    struct Thread_sendRouterAdv_Arg sendRouterAdvArg = {
-            .interfaceName = lanIfName,
-            .intervalSec = 5,
-    };
-
     if (useDhcp) {
-        pthread_create((pthread_t *) "dh", NULL, (void *(*)(void *)) Thread_requestDhcpPrefix, (void *) wanIfName);
+        pthread_t thread_dhcp;
+        pthread_create(&thread_dhcp, NULL, (void *(*)(void *)) Thread_requestDhcpPrefix, (void *) wanIfName);
 
-        // wait for result
+        // wait for a result
         while (_prefix.PrefixLength == 0);
     }
 
-    pthread_create((pthread_t *) "ra", NULL, (void *(*)(void *)) Thread_sendRouterAdv, (void *) &sendRouterAdvArg);
-    pthread_create((pthread_t *) "rs", NULL, (void *(*)(void *)) Thread_listenRouterSolicit, (void *) lanIfName);
+    pthread_t thread_ra;
+    pthread_t thread_rs;
+
+    struct Thread_sendRouterAdv_Arg sendRouterAdvArg = {
+            .interfaceName = lanIfName,
+            .intervalSec = 60,
+    };
+
+    pthread_create(&thread_ra, NULL, (void *(*)(void *)) Thread_sendRouterAdv, (void *) &sendRouterAdvArg);
+    pthread_create(&thread_rs, NULL, (void *(*)(void *)) Thread_listenRouterSolicit, (void *) lanIfName);
 
     utils_getLinkLocalAddressDispose();
-    return 0;
+
+    while (true) {
+        sleep(60);
+    }
+
 }
 
 int sendRouterAdv(const int handler, uint8_t macAddr[6], struct in6_addr linkLocalAddr, struct in6_addr dstAddr,
                   struct in6_addr prefix, uint prefixLength, uint validTime, uint preferTime) {
-
+    log_info("Start to send RA.");
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "Simplify"
     ndp_optPayload *prefixInfo = ndp_createOptionPrefixInformation(
@@ -334,9 +372,16 @@ int sendRouterAdv(const int handler, uint8_t macAddr[6], struct in6_addr linkLoc
             3,
             prefixInfo, mtu, linkAddress);
 
-    sendto(handler, raPacket, pktSize,
-           0, (struct sockaddr *) &dstAddr,
-           sizeof(dstAddr));
+    struct sockaddr_in6 dstAddrSock = {0x00};
+    dstAddrSock.sin6_family = AF_INET6;
+    dstAddrSock.sin6_port = 0x00;
+    dstAddrSock.sin6_addr = dstAddr;
+
+    if (sendto(handler, raPacket, pktSize,
+               0, (const struct sockaddr *) &dstAddrSock,
+               sizeof(struct sockaddr_in6)) < 0) {
+        log_error("Send RA failed: %s.", strerror(errno));
+    }
 
     free(prefixInfo);
     free(mtu);
@@ -353,8 +398,10 @@ struct in6_addr ReceiveSrcAddrFromRouterSolicit(const int handler, struct in6_ad
     size_t addrLen = sizeof(linkLocalAddr);
 
     while (true) {
-        ssize_t recLen = recvfrom(handler, recBuf, mtu, MSG_WAITALL, (struct sockaddr *) &linkLocalAddr,
+        ssize_t recLen = recvfrom(handler, recBuf, mtu, MSG_WAITFORONE, (struct sockaddr *) &linkLocalAddr,
                                   (socklen_t *) &addrLen);
+
+        log_info("RS socket received %ld bytes.", recLen);
 
         if (recLen < 14 + sizeof(struct ip6_hdr)) {
             continue; // 忽略无效包
@@ -380,6 +427,8 @@ struct in6_addr ReceiveSrcAddrFromRouterSolicit(const int handler, struct in6_ad
             continue;
 
         // skip check sum
+
+        log_info("Received a RS.");
 
         return ip6->ip6_src;
     }
