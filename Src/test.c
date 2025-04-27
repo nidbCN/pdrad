@@ -14,15 +14,8 @@
 #include "log.h"
 #include "ndp_packets.h"
 #include "utils.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
 #include <netinet/ip6.h>
 #include <netinet/icmp6.h>
-#include <net/if.h>
-#include <arpa/inet.h>
-#include <sys/ioctl.h>
 #include <bits/signum-generic.h>
 #include <signal.h>
 #include <pthread.h>
@@ -34,7 +27,8 @@ bool Thread_sendRouterAdv_cancel = false;
 bool Thread_requestDhcpPrefix_cancel = false;
 bool Thread_listenRouterSolicit_cancel = false;
 
-dh_opt_IA_Prefix *_prefix = NULL;
+bool _prefixLock = false;
+dh_opt_IA_Prefix _prefix = {0x00};
 
 void handle(int sig) {
     Thread_sendRouterAdv_cancel = true;
@@ -71,14 +65,22 @@ void print_memory_hex(const void *mem, const size_t size) {
     printf("\n");
 }
 
-int requestAndReceiveDhcp();
+int requestAndReceiveDhcp(int handler, void *buffer, size_t bufferLength,
+                          struct in6_addr clientAddr,
+                          dh_opt_IA_Prefix *prefixResultPtr);
 
 struct in6_addr ReceiveSrcAddrFromRouterSolicit(int handler, struct in6_addr linkLocalAddr);
 
-int sendRouterAdv(int handler, uint8_t macAddr[6], struct in6_addr linkLocalAddr, struct in6_addr dstAddr);
+int sendRouterAdv(int handler, uint8_t macAddr[6], struct in6_addr linkLocalAddr, struct in6_addr dstAddr,
+                  struct in6_addr prefix, uint prefixLength, uint validTime, uint preferTime);
 
-void Thread_sendRouterAdv(const char *lanIfName, uint intervalSec) {
-    log_info("RA thread start, bind interface {%s}, intervalSec {%d}", lanIfName, intervalSec);
+struct Thread_sendRouterAdv_Arg {
+    const char *interfaceName;
+    int intervalSec;
+};
+
+void *Thread_sendRouterAdv(struct Thread_sendRouterAdv_Arg *arg) {
+    log_info("RA thread start, bind interface {%s}, intervalSec {%d}", arg->interfaceName, arg->intervalSec);
 
     // ndp socket, IPv6 with next header ICMPv6 RAW SOCK
     const int ndpHandler = socket(AF_INET6, SOCK_RAW, IPPROTO_ICMPV6);
@@ -88,14 +90,14 @@ void Thread_sendRouterAdv(const char *lanIfName, uint intervalSec) {
         exit(EXIT_FAILURE);
     }
     struct ifreq *bindToLanDevReq = malloc(sizeof(struct ifreq));
-    strcpy(bindToLanDevReq->ifr_name, lanIfName);
+    strcpy(bindToLanDevReq->ifr_name, arg->interfaceName);
 
     if (setsockopt(ndpHandler, SOL_SOCKET, SO_BINDTODEVICE, (char *) bindToLanDevReq, sizeof(struct ifreq)) < 0) {
         log_error("Bind to interface %s failed", bindToLanDevReq->ifr_name);
         log_error(strerror(errno));
         close(ndpHandler);
         free(bindToLanDevReq);
-        return;
+        return NULL;
     }
 
     struct in6_addr dstAddr = ADDR_All_Nodes_Multicast;
@@ -106,15 +108,31 @@ void Thread_sendRouterAdv(const char *lanIfName, uint intervalSec) {
         utils_getLinkLocalAddress(&srcAddr);
 
         uint8_t lanIfHwAddr[6] = {0};
-        utils_getHardwareAddressByName(lanIfName, lanIfHwAddr);
-        sendRouterAdv(ndpHandler, lanIfHwAddr, srcAddr, dstAddr);
-        sleep(intervalSec);
+        utils_getHardwareAddressByName(arg->interfaceName, lanIfHwAddr);
+
+        while (_prefixLock);
+        _prefixLock = true;
+
+        struct in6_addr prefix = {0x00};
+        memcpy(&prefix, _prefix.Prefix, sizeof(struct in6_addr));
+
+        sendRouterAdv(ndpHandler, lanIfHwAddr, srcAddr, dstAddr,
+                      prefix,
+                      _prefix.PrefixLength,
+                      _prefix.ValidLifetime,
+                      _prefix.PreferredLifetime
+        );
+
+        _prefixLock = false;
+        sleep(arg->intervalSec);
     }
 
     close(ndpHandler);
+
+    return NULL;
 }
 
-void Thread_requestDhcpPrefix(const char *wanIfName) {
+void *Thread_requestDhcpPrefix(const char *wanIfName) {
     // init a udp socket
     int handler = socket(AF_INET6, SOCK_DGRAM, 0);
     if (handler < 0) {
@@ -131,7 +149,7 @@ void Thread_requestDhcpPrefix(const char *wanIfName) {
         log_error(strerror(errno));
         close(handler);
         free(request);
-        return;
+        return NULL;
     }
 
     struct sockaddr_in6 client_addr = {0x00};
@@ -144,7 +162,7 @@ void Thread_requestDhcpPrefix(const char *wanIfName) {
         log_error("Bind failed");
         log_error(strerror(errno));
         close(handler);
-        return;
+        return NULL;
     }
 
     // query mtu
@@ -160,8 +178,29 @@ void Thread_requestDhcpPrefix(const char *wanIfName) {
     void *buffer = malloc(mtu);
     memset(buffer, 0x00, mtu);
 
+    while (!Thread_requestDhcpPrefix_cancel) {
+        while (_prefixLock);
+        _prefixLock = true;
 
+        requestAndReceiveDhcp(handler, buffer, mtu, client_addr.sin6_addr, &_prefix);
+        int lifeTime = be32toh(_prefix.PreferredLifetime);
+        char *prefixStr = alloca(sizeof(char) * 40);
+
+        inet_ntop(AF_INET6, _prefix.Prefix, prefixStr, INET6_ADDRSTRLEN);
+        log_info("Parse success, prefix=`%s/%d`, preferred lifetime=%d, lifetime=%d.",
+                 prefixStr,
+                 _prefix.PrefixLength,
+                 lifeTime,
+                 be32toh(_prefix.ValidLifetime));
+
+        _prefixLock = false;
+
+        sleep(lifeTime);
+    }
+
+    close(handler);
     free(buffer);
+    return NULL;
 }
 
 void Thread_listenRouterSolicit(const char *lanIfName) {
@@ -199,11 +238,41 @@ void Thread_listenRouterSolicit(const char *lanIfName) {
 }
 
 int main(int argc, char *argv[]) {
-    if (argc != 2) {
-        log_error("Usage: %s <lan interface name> <wan interface name>", argv[0]);
+    bool useDhcp = false;
+    const char *lanIfName = argv[2];
+    const char *wanIfName = NULL;
+
+    if (argc >= 3 || (*argv[1] != 'd' && *argv[2] != 's')) {
+        if (*argv[1] == 'd') {
+            useDhcp = true;
+
+            wanIfName = argv[3];
+        } else if (*argv[1] == 's') {
+
+            struct in6_addr staticPrefix = {0x00};
+            inet_pton(AF_INET6, argv[3], &staticPrefix);
+            memcpy(_prefix.Prefix, &staticPrefix, sizeof(staticPrefix));
+
+            _prefix.PreferredLifetime = 3600;
+            _prefix.ValidLifetime = 7200;
+            _prefix.PrefixLength = atoi(argv[4]);
+        } else {
+            log_error("Usage: \n"
+                      "\t%s d <lan interface name> <wan interface name>"
+                      "\t%s s <lan interface name> <prefix> <prefix length>",
+                      argv[0], argv[0]
+            );
+        }
+    } else {
+        log_error("Usage: \n"
+                  "\t%s d <lan interface name> <wan interface name>"
+                  "\t%s s <lan interface name> <prefix> <prefix length>",
+                  argv[0], argv[0]
+        );
     }
 
-    utils_getLinkLocalAddressInit(argv[1]);
+
+    utils_getLinkLocalAddressInit(lanIfName);
 
     // REG SIG
     log_info("Register signal handler for SIGINT");
@@ -217,24 +286,37 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
-    pthread_create(NULL, NULL, Thread_sendRouterAdv, (void *) lanIfName, 1000);
+    struct Thread_sendRouterAdv_Arg sendRouterAdvArg = {
+            .interfaceName = lanIfName,
+            .intervalSec = 5,
+    };
+
+    if (useDhcp) {
+        pthread_create((pthread_t *) "dh", NULL, (void *(*)(void *)) Thread_requestDhcpPrefix, (void *) wanIfName);
+
+        // wait for result
+        while (_prefix.PrefixLength == 0);
+    }
+
+    pthread_create((pthread_t *) "ra", NULL, (void *(*)(void *)) Thread_sendRouterAdv, (void *) &sendRouterAdvArg);
+    pthread_create((pthread_t *) "rs", NULL, (void *(*)(void *)) Thread_listenRouterSolicit, (void *) lanIfName);
 
     utils_getLinkLocalAddressDispose();
     return 0;
 }
 
-int sendRouterAdv(const int handler, uint8_t macAddr[6], struct in6_addr linkLocalAddr, struct in6_addr dstAddr) {
-    struct in6_addr testPrefix = {
-            .__in6_u.__u6_addr32 = {0xfd320026, 0x0d000721, 0x00000000, 0x00000000}
-    };
-    htobe_inet6(testPrefix);
+int sendRouterAdv(const int handler, uint8_t macAddr[6], struct in6_addr linkLocalAddr, struct in6_addr dstAddr,
+                  struct in6_addr prefix, uint prefixLength, uint validTime, uint preferTime) {
 
+#pragma clang diagnostic push
+#pragma ide diagnostic ignored "Simplify"
     ndp_optPayload *prefixInfo = ndp_createOptionPrefixInformation(
-            64,
+            prefixLength,
             (ndp_opt_PrefixInformation_flag_L | !ndp_opt_PrefixInformation_flag_A) & ndp_opt_PrefixInformation_flag_R,
-            60,
-            30,
-            testPrefix);
+            validTime,
+            preferTime,
+            prefix);
+#pragma clang diagnostic pop
 
     ndp_optPayload *mtu = ndp_createOptionMtu(1500);
     ndp_optPayload *linkAddress = ndp_createOptionSourceLinkLayerAddress(macAddr);
@@ -402,16 +484,6 @@ int requestAndReceiveDhcp(const int handler, void *buffer, size_t bufferLength,
     dh_opt_IA_Prefix *prefix = (dh_opt_IA_Prefix *) pdOption->OptionData;
 
     memcpy(prefixResultPtr, prefix, sizeof(dh_opt_IA_Prefix));
-
-    char *prefixStr = alloca(sizeof(char) * 40);
-
-    inet_ntop(AF_INET6, prefix->Prefix, prefixStr, INET6_ADDRSTRLEN);
-    log_info("Parse success, prefix=`%s/%d`, preferred lifetime=%d, lifetime=%d.",
-             prefixStr,
-             prefix->PrefixLength,
-             be32toh(prefix->PreferredLifetime),
-             be32toh(prefix->ValidLifetime));
-
     close(handler);
 
     return 0;
