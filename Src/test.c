@@ -103,7 +103,9 @@ void *Thread_sendRouterAdv(struct Thread_sendRouterAdv_Arg *arg) {
         struct in6_addr prefix = {0x00};
         memcpy(&prefix, _prefix.Prefix, sizeof(struct in6_addr));
 
-        sendRouterAdv(ndpHandler, lanIfHwAddr, srcAddr, dstAddr,
+        log_info("Send a RA at interval %d.", arg->intervalSec);
+        sendRouterAdv(ndpHandler, lanIfHwAddr, srcAddr,
+                      dstAddr,
                       prefix,
                       _prefix.PrefixLength,
                       _prefix.ValidLifetime,
@@ -123,8 +125,8 @@ void *Thread_requestDhcpPrefix(const char *wanIfName) {
     // init a udp(DHCPv6) socket
     int handler = socket(AF_INET6, SOCK_DGRAM, 0);
     if (handler < 0) {
-        log_error("Socket creation failed.");
-        log_error(strerror(errno));
+        log_error("DHCP Socket creation failed: %s.", strerror(errno));
+
         exit(EXIT_FAILURE);
     }
 
@@ -132,27 +134,36 @@ void *Thread_requestDhcpPrefix(const char *wanIfName) {
     struct ifreq *request = malloc(sizeof(struct ifreq));
     strcpy(request->ifr_name, wanIfName);
 
-    // bind to multicast
-    if (setsockopt(handler, IPPROTO_UDP, IPV6_MULTICAST_IF, request, sizeof(struct ifreq)) < 0) {
-        log_error("Bind interface failed");
-        log_error(strerror(errno));
+    // bind to interface
+    if (setsockopt(handler, SOL_SOCKET, SO_BINDTODEVICE, request, sizeof(struct ifreq)) < 0) {
+        log_error("Bind interface %s failed: %s.", request->ifr_name, strerror(errno));
+
         close(handler);
         free(request);
         return NULL;
     }
 
+//    // bind to multicast
+//    if (setsockopt(handler, IPPROTO_UDP, IPV6_MULTICAST_IF, request, sizeof(struct ifreq)) < 0) {
+//        log_error("Bind to multicast %s failed: %s.", request->ifr_name, strerror(errno));
+//
+//        close(handler);
+//        free(request);
+//        return NULL;
+//    }
+
     struct sockaddr_in6 client_addr = {0x00};
     client_addr.sin6_family = AF_INET6;
     client_addr.sin6_port = htons(CLIENT_PORT);
     client_addr.sin6_addr = in6addr_any;
-
-    // bind address
-    if (bind(handler, (struct sockaddr *) &client_addr, sizeof(client_addr)) < 0) {
-        log_error("Bind failed");
-        log_error(strerror(errno));
-        close(handler);
-        return NULL;
-    }
+//
+//    // bind address
+//    if (bind(handler, (struct sockaddr *) &client_addr, sizeof(client_addr)) < 0) {
+//        log_error("Bind address  failed");
+//        log_error(strerror(errno));
+//        close(handler);
+//        return NULL;
+//    }
 
     // query mtu
     int mtu = 1500;
@@ -310,8 +321,8 @@ int main(int argc, char *argv[]) {
 
             memcpy(_prefix.Prefix, &staticPrefix, sizeof(staticPrefix));
 
-            _prefix.PreferredLifetime = 3600;
-            _prefix.ValidLifetime = 7200;
+            _prefix.PreferredLifetime = 1296000;
+            _prefix.ValidLifetime = 2592000;
             _prefix.PrefixLength = atoi(argv[4]);
         } else {
             log_error("Usage: \n"
@@ -361,14 +372,14 @@ int main(int argc, char *argv[]) {
 
     struct Thread_sendRouterAdv_Arg sendRouterAdvArg = {
             .interfaceName = lanIfName,
-            .intervalSec = 60,
+            .intervalSec = 200,
     };
 
     pthread_create(&thread_ra, NULL, (void *(*)(void *)) Thread_sendRouterAdv, (void *) &sendRouterAdvArg);
     pthread_create(&thread_rs, NULL, (void *(*)(void *)) Thread_listenRouterSolicit, (void *) lanIfName);
 
     while (true) {
-        sleep(60);
+        sleep(1);
     }
 }
 
@@ -379,12 +390,13 @@ int sendRouterAdv(const int handler, uint8_t macAddr[6], struct in6_addr linkLoc
 #pragma ide diagnostic ignored "Simplify"
     ndp_optPayload *prefixInfo = ndp_createOptionPrefixInformation(
             prefixLength,
-            (ndp_opt_PrefixInformation_flag_L | !ndp_opt_PrefixInformation_flag_A) & ndp_opt_PrefixInformation_flag_R,
+            (ndp_opt_PrefixInformation_flag_L | ndp_opt_PrefixInformation_flag_A) & ndp_opt_PrefixInformation_flag_R,
             validTime,
             preferTime,
             prefix);
 #pragma clang diagnostic pop
 
+    ndp_optPayload *routeInfo = ndp_createOptionRouteInformation(56, 0x00, validTime, prefix);
     ndp_optPayload *mtu = ndp_createOptionMtu(1500);
     ndp_optPayload *linkAddress = ndp_createOptionSourceLinkLayerAddress(macAddr);
 
@@ -395,17 +407,21 @@ int sendRouterAdv(const int handler, uint8_t macAddr[6], struct in6_addr linkLoc
             linkLocalAddr,
             dstAddr,
             64,
-            60,
+            1800,
             0x00,
             0x00,
-            3,
-            prefixInfo, mtu, linkAddress);
+            4,
+            linkAddress, prefixInfo, routeInfo, mtu);
 
     struct sockaddr_in6 dstAddrSock = {0x00};
     dstAddrSock.sin6_family = AF_INET6;
     dstAddrSock.sin6_port = 0x00;
     dstAddrSock.sin6_addr = dstAddr;
 
+    char buffer[40] = {0};
+    inet_ntop(AF_INET6, &dstAddr, buffer, 40);
+
+    log_info("Send RA to %s.", buffer);
     if (sendto(handler, raPacket, pktSize,
                0, (const struct sockaddr *) &dstAddrSock,
                sizeof(struct sockaddr_in6)) < 0) {
@@ -431,15 +447,18 @@ struct in6_addr ReceiveSrcAddrFromRouterSolicit(const int handler) {
         ssize_t recLen = recvfrom(handler, recBuf, mtu, MSG_WAITFORONE, (struct sockaddr *) &addr,
                                   (socklen_t *) &addrLen);
 
-        log_info("RS socket received %ld bytes.", recLen);
+        log_info("RS socket received packet with %ld bytes.", recLen);
 
         // 解析 ICMPv6 头
         struct nd_router_solicit *rs = (struct nd_router_solicit *) (recBuf);
-        if (rs->nd_rs_hdr.icmp6_type != 133)
+        if (rs->nd_rs_hdr.icmp6_type != 133) {
+            log_info("RS type not 133, drop.");
             continue;
-        if (rs->nd_rs_hdr.icmp6_code != 0)
+        }
+        if (rs->nd_rs_hdr.icmp6_code != 0) {
+            log_info("RS code not 0, drop.");
             continue;
-
+        }
         // skip check sum
 
         log_info("Received a RS.");
@@ -503,6 +522,8 @@ int requestAndReceiveDhcp(const int handler, void *buffer, size_t bufferLength,
     print_memory_hex(pktPtr, pktLength);
 
     struct in6_addr serverIp = ADDR_All_DHCP_Relay_Agents_and_Servers;
+    htobe_inet6(serverIp);
+
     struct sockaddr_in6 sockServerAddr = {0x00};
     sockServerAddr.sin6_family = AF_INET6;
     sockServerAddr.sin6_port = htons(SERVER_PORT);
