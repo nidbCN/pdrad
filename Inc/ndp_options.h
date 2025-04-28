@@ -81,15 +81,19 @@ typedef struct _ndp_opt_RouteInformationOption {
     /* Variable-length field containing an IP address or a prefix of an IP address.
      * The Prefix Length field contains the number of valid leading bits in the prefix.
      * The bits in the prefix after the prefix length (if any) are reserved and MUST be initialized to zero by the sender and ignored by the receiver.
-     * NOTE: only vaild address and packed to 32bits. for example, `/64` use the first 4bytes and `/56` use the first 4bytes with the last 8 bits be filled with 0x0.
+     * NOTE: only valid address and packed to 32bits. for example, `/64` use the first 4bytes and `/56` use the first 4bytes with the last 8 bits be filled with 0x0.
      */
-    uint32_t Perfix[];
-} ndp_opt_RouteInformation;
+    uint32_t Prefix[];
+}  __attribute__((packed)) ndp_opt_RouteInformation;
 
 ndp_optPayload *ndp_createOptionSourceLinkLayerAddress(uint8_t etherAddr[6]);
 
 ndp_optPayload *ndp_createOptionTargetLinkLayerAddress(uint8_t etherAddr[6]);
 
+/*
+ *
+ * Prefix must be BIG-END before input.
+ */
 ndp_optPayload *ndp_createOptionPrefixInformation(
         uint8_t prefixLength,
         enum ndp_opt_PrefixInformationFlag flags,

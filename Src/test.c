@@ -317,7 +317,6 @@ int main(int argc, char *argv[]) {
         } else if (*argv[1] == 's') {
             struct in6_addr staticPrefix = {0x00};
             inet_pton(AF_INET6, argv[3], &staticPrefix);
-            ((uint64_t *) &staticPrefix)[0] = htobe64(((uint64_t *) &staticPrefix)[0]);
 
             memcpy(_prefix.Prefix, &staticPrefix, sizeof(staticPrefix));
 

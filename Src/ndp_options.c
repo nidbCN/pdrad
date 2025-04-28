@@ -44,9 +44,7 @@ ndp_optPayload *ndp_createOptionPrefixInformation(
     data->PreferredLifetime = htobe32(preferredLifetime);
     data->Reserved = 0x00;
 
-    uint64_t *addrPtr = (uint64_t *) (&prefix);
-    data->Prefix[0] = htobe64(addrPtr[0]);
-    data->Prefix[1] = htobe64(addrPtr[1]);
+    memcpy(data->Prefix, &prefix, sizeof(struct in6_addr));
 
     return option;
 }
@@ -83,7 +81,7 @@ ndp_optPayload *ndp_createOptionRouteInformation(
     }
 
     if (prefixLength != 0) {
-        propLen += prefixLength / 64; // length in 8 bytes
+        propLen += prefixLength / 64 + 1; // length in 8 bytes
     }
 
     ndp_optPayload *option = malloc(propLen * 8);
@@ -100,15 +98,14 @@ ndp_optPayload *ndp_createOptionRouteInformation(
     if (prefixLength == 0)
         return option;
 
-    htobe_inet6(prefix);
-    if (prefixLength >= 64) {
-        ((uint64_t *) &prefix)[1] = (((uint64_t *) &prefix)[1] << (128 - prefixLength)) >> (128 - prefixLength);
-    }
-    if (prefixLength < 64) {
-        ((uint64_t *) &prefix)[0] = (((uint64_t *) &prefix)[0] << (64 - prefixLength)) >> (64 - prefixLength);
-    }
+//    if (prefixLength >= 64) {
+//        ((uint64_t *) &prefix)[1] = (((uint64_t *) &prefix)[1] >> (128 - prefixLength)) << (128 - prefixLength);
+//    }
+//    if (prefixLength < 64) {
+//        ((uint64_t *) &prefix)[0] = (((uint64_t *) &prefix)[0] >> (64 - prefixLength)) << (64 - prefixLength);
+//    }
 
-    memcpy(subOption->Perfix, &prefix, (propLen - 1) * 8);
+    memcpy(subOption->Prefix, &prefix, (propLen - 1) * 8);
 
     return option;
 }
