@@ -420,12 +420,40 @@ int sendRouterAdv(const int handler, uint8_t macAddr[6], struct in6_addr linkLoc
     char buffer[40] = {0};
     inet_ntop(AF_INET6, &dstAddr, buffer, 40);
 
+    struct iovec payload = {
+            .iov_base = raPacket,
+            .iov_len = pktSize
+    };
+
+    uint8_t cmsg_buf[CMSG_SPACE(sizeof(int))];
+
+    struct msghdr message = {
+            .msg_name = &dstAddrSock,
+            .msg_namelen = sizeof(struct sockaddr_in6),
+            .msg_iov = &payload,
+            .msg_iovlen = 1,
+            .msg_control = cmsg_buf,
+            .msg_controllen = sizeof(cmsg_buf),
+            .msg_flags = 0,
+    };
+
+    struct cmsghdr *controlMessage = CMSG_FIRSTHDR(&message);
+    controlMessage->cmsg_level = IPPROTO_IPV6;
+    controlMessage->cmsg_type = IPV6_HOPLIMIT;
+    controlMessage->cmsg_len = CMSG_LEN(sizeof(int));
+    *(int *) CMSG_DATA(controlMessage) = 255;
+
     log_info("Send RA to %s.", buffer);
-    if (sendto(handler, raPacket, pktSize,
-               0, (const struct sockaddr *) &dstAddrSock,
-               sizeof(struct sockaddr_in6)) < 0) {
+
+    if(sendmsg(handler, &message, 0) < 0) {
         log_error("Send RA failed: %s.", strerror(errno));
     }
+
+//    if (sendto(handler, raPacket, pktSize,
+//               0, (const struct sockaddr *) &dstAddrSock,
+//               sizeof(struct sockaddr_in6)) < 0) {
+//        log_error("Send RA failed: %s.", strerror(errno));
+//    }
 
     free(prefixInfo);
     free(mtu);
