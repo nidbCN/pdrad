@@ -35,7 +35,7 @@ size_t ndp_createRAPacket(
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "Simplify"
     pkt->nd_ra_hdr.icmp6_dataun.icmp6_un_data8[1] =
-            ndp_ra_flag_Prf_Medium & (ndp_ra_flag_R);
+            ndp_ra_flag_O | ndp_ra_flag_Prf_High & (ndp_ra_flag_R);
 #pragma clang diagnostic pop
     pkt->nd_ra_hdr.icmp6_dataun.icmp6_un_data16[1] = htobe16(routerLifeTime);
     pkt->nd_ra_reachable = htobe32(reachableTime);
