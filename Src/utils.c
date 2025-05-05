@@ -62,13 +62,16 @@ int utils_getLinkLocalAddress(struct in6_addr *address) {
         return errno;
     }
 
+    struct sockaddr_in6 addrBuffer = {0x00};
+
     // get socket connection info
     socklen_t addrLen = sizeof(struct sockaddr_in6);
-    if (getsockname(utils_handler, (struct sockaddr *) address, &addrLen) < 0) {
+    if (getsockname(utils_handler, (struct sockaddr *) &addrBuffer, &addrLen) < 0) {
         log_error("Invoke `getsockname` failed: %s.", strerror(errno));
         close(utils_handler);
     }
-
+    
+    *address = addrBuffer.sin6_addr;
     return 0;
 }
 
