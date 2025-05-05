@@ -120,10 +120,12 @@ void *Thread_sendRouterAdv(struct Thread_sendRouterAdv_Arg *arg) {
         memcpy(&prefix, _prefix.Prefix, sizeof(struct in6_addr));
 
         inet_ntop(AF_INET6, _prefix.Prefix, addrStrBuf, INET6_ADDRSTRLEN);
-        log_info("[Thread RA]Build a RA message with prefix %s/%d with lifetime %D.", addrStrBuf, _prefix.PrefixLength,
+        log_info("[Thread RA]Build a RA message with prefix %s/%d with lifetime %d.", addrStrBuf, _prefix.PrefixLength,
                  _prefix.ValidLifetime);
 
-        sendRouterAdv(ndpHandler, hardwareAddr, srcAddr,
+        sendRouterAdv(ndpHandler,
+                      hardwareAddr,
+                      srcAddr,
                       dstAddr,
                       prefix,
                       _prefix.PrefixLength,
@@ -166,31 +168,31 @@ void *Thread_requestDhcpPrefix(const char *wanIfName) {
         return NULL;
     }
 
-    // get interface index
+    // get interface ifIndex
     ioctl(handler, SIOCGIFINDEX, request);
-    int index = request->ifr_ifru.ifru_ivalue;
+    int ifIndex = request->ifr_ifru.ifru_ivalue;
 
-    // bind to multicast
-    if (setsockopt(handler, IPPROTO_UDP, IPV6_MULTICAST_IF, request, sizeof(struct ifreq)) < 0) {
-        log_error("Bind interface[%d(%s)] to multicast failed: %s.", index, wanIfName, strerror(errno));
-
-        close(handler);
-        free(request);
-        return NULL;
-    }
+//    // bind to multicast
+//    if (setsockopt(handler, IPPROTO_IPV6, IPV6_MULTICAST_IF, request, sizeof(struct ifreq)) < 0) {
+//        log_error("Bind interface[%d(%s)] to multicast failed: %s.", ifIndex, wanIfName, strerror(errno));
+//
+//        close(handler);
+//        free(request);
+//        return NULL;
+//    }
 
     struct sockaddr_in6 client_addr = {0x00};
     client_addr.sin6_family = AF_INET6;
     client_addr.sin6_port = htons(CLIENT_PORT);
     client_addr.sin6_addr = in6addr_any;
+    client_addr.sin6_scope_id = ifIndex;
 
-//    // bind address
-//    if (bind(handler, (struct sockaddr *) &client_addr, sizeof(client_addr)) < 0) {
-//        log_error("Bind address  failed");
-//        log_error(strerror(errno));
-//        close(handler);
-//        return NULL;
-//    }
+    // bind address
+    if (bind(handler, (struct sockaddr *) &client_addr, sizeof(client_addr)) < 0) {
+        log_error("Bind address failed: %s.", strerror(errno));
+        close(handler);
+        return NULL;
+    }
 
     // query mtu
     int mtu = 1500;
@@ -211,19 +213,22 @@ void *Thread_requestDhcpPrefix(const char *wanIfName) {
         _prefixLock = true;
 
         requestAndReceiveDhcp(handler, buffer, mtu, client_addr.sin6_addr, &_prefix);
-        int lifeTime = be32toh(_prefix.PreferredLifetime);
-        char *prefixStr = alloca(sizeof(char) * 40);
+        _prefix.PreferredLifetime = be32toh(_prefix.PreferredLifetime);
+        _prefix.ValidLifetime = be32toh(_prefix.ValidLifetime);
 
-        inet_ntop(AF_INET6, _prefix.Prefix, prefixStr, INET6_ADDRSTRLEN);
+        char prefixStrBuf[INET6_ADDRSTRLEN] = {0x00};
+        inet_ntop(AF_INET6, _prefix.Prefix, prefixStrBuf, INET6_ADDRSTRLEN);
         log_info("Parse success, prefix=`%s/%d`, preferred lifetime=%d, lifetime=%d.",
-                 prefixStr,
+                 prefixStrBuf,
                  _prefix.PrefixLength,
-                 lifeTime,
-                 be32toh(_prefix.ValidLifetime));
+                 _prefix.PreferredLifetime,
+                 _prefix.ValidLifetime);
 
+        _prefix.PrefixLength = 64;
         _prefixLock = false;
 
-        sleep(lifeTime);
+        log_info("[Thread DHCP]Sleep %d sec before next request.", _prefix.PreferredLifetime);
+        sleep(_prefix.PreferredLifetime);
     }
 
     close(handler);
@@ -297,7 +302,7 @@ void Thread_listenRouterSolicit(const char *lanIfName) {
 
         struct in6_addr clientAddr = ReceiveSrcAddrFromRouterSolicit(ndpMulticastHandler);
 
-        log_info("Success parse client address from RS, reply a RA.");
+        log_info("[Thread RS]Success parse client address from RS, reply a RA.");
 
         uint8_t lanIfHwAddr[6] = {0};
         utils_getHardwareAddressByName(lanIfHwAddr);
@@ -309,7 +314,10 @@ void Thread_listenRouterSolicit(const char *lanIfName) {
 
         log_info("Send a RA.");
 
-        sendRouterAdv(ndpMulticastHandler, lanIfHwAddr, linkLocalAddr, clientAddr,
+        sendRouterAdv(ndpMulticastHandler,
+                      lanIfHwAddr,
+                      linkLocalAddr,
+                      clientAddr,
                       prefix,
                       _prefix.PrefixLength,
                       _prefix.ValidLifetime,
@@ -348,8 +356,8 @@ int main(int argc, char *argv[]) {
 
             memcpy(_prefix.Prefix, &staticPrefix, sizeof(staticPrefix));
 
-            _prefix.PreferredLifetime = 1296000;
-            _prefix.ValidLifetime = 2592000;
+            _prefix.PreferredLifetime = 24000;
+            _prefix.ValidLifetime = 48000;
             _prefix.PrefixLength = atoi(argv[4]);
         } else {
             log_error("Usage: \n"
