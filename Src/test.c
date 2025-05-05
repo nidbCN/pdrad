@@ -112,17 +112,17 @@ void *Thread_sendRouterAdv(struct Thread_sendRouterAdv_Arg *arg) {
         log_info("[Thread RA]Get hardware address %s to build RA.", hardwareAddr);
 
         // waiting for lock
-        while (_prefixLock) {
-
-
-        }
+        while (_prefixLock) {}
 
         _prefixLock = true;
 
         struct in6_addr prefix = {0x00};
         memcpy(&prefix, _prefix.Prefix, sizeof(struct in6_addr));
 
-        log_info("Send a RA at interval %d.", arg->intervalSec);
+        inet_ntop(AF_INET6, _prefix.Prefix, addrStrBuf, INET6_ADDRSTRLEN);
+        log_info("[Thread RA]Build a RA message with prefix %s/%d with lifetime %D.", addrStrBuf, _prefix.PrefixLength,
+                 _prefix.ValidLifetime);
+
         sendRouterAdv(ndpHandler, hardwareAddr, srcAddr,
                       dstAddr,
                       prefix,
@@ -132,6 +132,7 @@ void *Thread_sendRouterAdv(struct Thread_sendRouterAdv_Arg *arg) {
         );
 
         _prefixLock = false;
+        log_info("[Thread RA]Sleep %d sec waiting for next broadcast.", arg->intervalSec);
         sleep(arg->intervalSec);
     }
 
@@ -142,12 +143,15 @@ void *Thread_sendRouterAdv(struct Thread_sendRouterAdv_Arg *arg) {
 
 void *Thread_requestDhcpPrefix(const char *wanIfName) {
     // init a udp(DHCPv6) socket
+    log_info("[Thread DHCP]Thread start, bind interface %s.", wanIfName);
     int handler = socket(AF_INET6, SOCK_DGRAM, 0);
     if (handler < 0) {
-        log_error("DHCP Socket creation failed: %s.", strerror(errno));
+        log_error("Socket creation failed: %s.", strerror(errno));
 
-        exit(EXIT_FAILURE);
+        Thread_requestDhcpPrefix_cancel = true;
+        return NULL;
     }
+    log_info("Success create socket[%d].", handler);
 
     // ioctl req
     struct ifreq *request = malloc(sizeof(struct ifreq));
@@ -155,27 +159,31 @@ void *Thread_requestDhcpPrefix(const char *wanIfName) {
 
     // bind to interface
     if (setsockopt(handler, SOL_SOCKET, SO_BINDTODEVICE, request, sizeof(struct ifreq)) < 0) {
-        log_error("Bind interface %s failed: %s.", request->ifr_name, strerror(errno));
+        log_error("Bind socket[%d] to interface %s failed: %s.", handler, request->ifr_name, strerror(errno));
 
         close(handler);
         free(request);
         return NULL;
     }
 
-//    // bind to multicast
-//    if (setsockopt(handler, IPPROTO_UDP, IPV6_MULTICAST_IF, request, sizeof(struct ifreq)) < 0) {
-//        log_error("Bind to multicast %s failed: %s.", request->ifr_name, strerror(errno));
-//
-//        close(handler);
-//        free(request);
-//        return NULL;
-//    }
+    // get interface index
+    ioctl(handler, SIOCGIFINDEX, request);
+    int index = request->ifr_ifru.ifru_ivalue;
+
+    // bind to multicast
+    if (setsockopt(handler, IPPROTO_UDP, IPV6_MULTICAST_IF, request, sizeof(struct ifreq)) < 0) {
+        log_error("Bind interface[%d(%s)] to multicast failed: %s.", index, wanIfName, strerror(errno));
+
+        close(handler);
+        free(request);
+        return NULL;
+    }
 
     struct sockaddr_in6 client_addr = {0x00};
     client_addr.sin6_family = AF_INET6;
     client_addr.sin6_port = htons(CLIENT_PORT);
     client_addr.sin6_addr = in6addr_any;
-//
+
 //    // bind address
 //    if (bind(handler, (struct sockaddr *) &client_addr, sizeof(client_addr)) < 0) {
 //        log_error("Bind address  failed");
@@ -188,8 +196,9 @@ void *Thread_requestDhcpPrefix(const char *wanIfName) {
     int mtu = 1500;
     if (ioctl(handler, SIOCGIFMTU, request) >= 0) {
         mtu = request->ifr_ifru.ifru_mtu;
+        log_info("[Thread DHCP]ioctl success get mtu: %d.", mtu);
     } else {
-        log_error("ioctl error, can't get mtu: %s", strerror(errno));
+        log_error("[Thread DHCP]ioctl get mtu failed: %s, use default mtu: %d", strerror(errno), mtu);
     }
 
     free(request);
