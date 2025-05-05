@@ -11,7 +11,7 @@
     // addr is not const and be fill by each 32bits, this function will modify its content.
 #define htobe_inet6(addr) \
     ((uint64_t*)&addr)[0] = htobe64((uint64_t)((uint32_t*)&addr)[0] << 32 | ((uint32_t*)&addr)[1]);\
-    ((uint64_t*)&addr)[1] = htobe64((uint64_t)((uint32_t*)&addr)[2] << 32 | ((uint32_t*)&addr)[3]);
+    ((uint64_t*)&addr)[1] = htobe64((uint64_t)((uint32_t*)&addr)[2] << 32 | ((uint32_t*)&addr)[3])
 #else
     // addr is not const and be fill by each 32bits, this function will modify its content.
     #define htobe_inet6(addr)\

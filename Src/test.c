@@ -67,44 +67,63 @@ struct Thread_sendRouterAdv_Arg {
 };
 
 void *Thread_sendRouterAdv(struct Thread_sendRouterAdv_Arg *arg) {
-    log_info("RA thread start, bind interface {%s}, intervalSec {%d}", arg->interfaceName, arg->intervalSec);
+    log_info("[Thread RA]Thread start, bind interface {%s}, intervalSec {%d}", arg->interfaceName, arg->intervalSec);
 
     // ndp socket, IPv6 with next header ICMPv6 RAW SOCK
     const int ndpHandler = socket(AF_INET6, SOCK_RAW, IPPROTO_ICMPV6);
     if (ndpHandler < 0) {
-        log_error("Socket creation failed.");
-        log_error(strerror(errno));
-        exit(EXIT_FAILURE);
+        log_error("[Thread RA]Socket creation failed: %s.", strerror(errno));
+
+        Thread_sendRouterAdv_cancel = true;
+        return NULL;
     }
+    log_info("[Thread RA]Success create socket[%d].", ndpHandler);
+
     struct ifreq *bindToLanDevReq = malloc(sizeof(struct ifreq));
     strcpy(bindToLanDevReq->ifr_name, arg->interfaceName);
 
     if (setsockopt(ndpHandler, SOL_SOCKET, SO_BINDTODEVICE, (char *) bindToLanDevReq, sizeof(struct ifreq)) < 0) {
-        log_error("Bind to interface %s failed", bindToLanDevReq->ifr_name);
-        log_error(strerror(errno));
+        log_error("[Thread RA]Bind socket[%d] to interface %s failed: %s.", ndpHandler, bindToLanDevReq->ifr_name,
+                  strerror(errno));
+
+        Thread_sendRouterAdv_cancel = true;
         close(ndpHandler);
         free(bindToLanDevReq);
         return NULL;
     }
 
+    char addrStrBuf[INET6_ADDRSTRLEN] = {0x00};
+
     struct in6_addr dstAddr = ADDR_All_Nodes_Multicast;
     htobe_inet6(dstAddr);
 
+    inet_ntop(AF_INET6, &dstAddr, addrStrBuf, INET6_ADDRSTRLEN);
+    log_info("[Thread RA]Generate dest address(all node multicast) %s to send RA.", addrStrBuf);
+
     while (!Thread_sendRouterAdv_cancel) {
-        struct in6_addr srcAddr = {0};
+        struct in6_addr srcAddr = {0x00};
         utils_getLinkLocalAddress(&srcAddr);
 
-        uint8_t lanIfHwAddr[6] = {0};
-        utils_getHardwareAddressByName(lanIfHwAddr);
+        inet_ntop(AF_INET6, &srcAddr, addrStrBuf, INET6_ADDRSTRLEN);
+        log_info("[Thread RA]Get src address(link-local) %s to send RA.", addrStrBuf);
 
-        while (_prefixLock);
+        uint8_t hardwareAddr[8] = {0x00};
+        utils_getHardwareAddressByName(hardwareAddr);
+        log_info("[Thread RA]Get hardware address %s to build RA.", hardwareAddr);
+
+        // waiting for lock
+        while (_prefixLock) {
+
+
+        }
+
         _prefixLock = true;
 
         struct in6_addr prefix = {0x00};
         memcpy(&prefix, _prefix.Prefix, sizeof(struct in6_addr));
 
         log_info("Send a RA at interval %d.", arg->intervalSec);
-        sendRouterAdv(ndpHandler, lanIfHwAddr, srcAddr,
+        sendRouterAdv(ndpHandler, hardwareAddr, srcAddr,
                       dstAddr,
                       prefix,
                       _prefix.PrefixLength,
@@ -377,9 +396,11 @@ int main(int argc, char *argv[]) {
     pthread_create(&thread_ra, NULL, (void *(*)(void *)) Thread_sendRouterAdv, (void *) &sendRouterAdvArg);
     pthread_create(&thread_rs, NULL, (void *(*)(void *)) Thread_listenRouterSolicit, (void *) lanIfName);
 
-    while (true) {
+    while (!Thread_listenRouterSolicit_cancel && !Thread_sendRouterAdv_cancel) {
         sleep(1);
     }
+
+    return 0;
 }
 
 int sendRouterAdv(const int handler, uint8_t macAddr[6], struct in6_addr linkLocalAddr, struct in6_addr dstAddr,
@@ -445,7 +466,7 @@ int sendRouterAdv(const int handler, uint8_t macAddr[6], struct in6_addr linkLoc
 
     log_info("Send RA to %s.", buffer);
 
-    if(sendmsg(handler, &message, 0) < 0) {
+    if (sendmsg(handler, &message, 0) < 0) {
         log_error("Send RA failed: %s.", strerror(errno));
     }
 
