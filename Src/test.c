@@ -26,7 +26,7 @@ bool Thread_sendRouterAdv_cancel = false;
 bool Thread_requestDhcpPrefix_cancel = false;
 bool Thread_listenRouterSolicit_cancel = false;
 
-bool _prefixLock = false;
+pthread_mutex_t _prefixMutex = PTHREAD_MUTEX_INITIALIZER;
 dh_opt_IA_Prefix _prefix = {0x00};
 
 void handle(int _) {
@@ -112,9 +112,7 @@ void *Thread_sendRouterAdv(struct Thread_sendRouterAdv_Arg *arg) {
         log_info("[Thread RA]Get hardware address %s to build RA.", hardwareAddr);
 
         // waiting for lock
-        while (_prefixLock) {}
-
-        _prefixLock = true;
+        pthread_mutex_lock(&_prefixMutex);
 
         struct in6_addr prefix = {0x00};
         memcpy(&prefix, _prefix.Prefix, sizeof(struct in6_addr));
@@ -133,7 +131,7 @@ void *Thread_sendRouterAdv(struct Thread_sendRouterAdv_Arg *arg) {
                       _prefix.PreferredLifetime
         );
 
-        _prefixLock = false;
+        pthread_mutex_unlock(&_prefixMutex);
         log_info("[Thread RA]Sleep %d sec waiting for next broadcast.", arg->intervalSec);
         sleep(arg->intervalSec);
     }
@@ -209,8 +207,7 @@ void *Thread_requestDhcpPrefix(const char *wanIfName) {
     memset(buffer, 0x00, mtu);
 
     while (!Thread_requestDhcpPrefix_cancel) {
-        while (_prefixLock);
-        _prefixLock = true;
+        pthread_mutex_lock(_prefixMutex);
 
         requestAndReceiveDhcp(handler, buffer, mtu, client_addr.sin6_addr, &_prefix);
         _prefix.PreferredLifetime = be32toh(_prefix.PreferredLifetime);
@@ -225,7 +222,7 @@ void *Thread_requestDhcpPrefix(const char *wanIfName) {
                  _prefix.ValidLifetime);
 
         _prefix.PrefixLength = 64;
-        _prefixLock = false;
+        pthread_mutex_unlock(_prefixMutex);
 
         log_info("[Thread DHCP]Sleep %d sec before next request.", _prefix.PreferredLifetime);
         sleep(_prefix.PreferredLifetime);
@@ -307,7 +304,7 @@ void Thread_listenRouterSolicit(const char *lanIfName) {
         uint8_t lanIfHwAddr[6] = {0};
         utils_getHardwareAddressByName(lanIfHwAddr);
 
-        _prefixLock = true;
+        pthread_mutex_lock(&_prefixMutex);
 
         struct in6_addr prefix = {0x00};
         memcpy(&prefix, _prefix.Prefix, sizeof(struct in6_addr));
@@ -324,7 +321,7 @@ void Thread_listenRouterSolicit(const char *lanIfName) {
                       _prefix.PreferredLifetime
         );
 
-        _prefixLock = false;
+        pthread_mutex_unlock(&_prefixMutex);
     }
 
     close(ndpMulticastHandler);
